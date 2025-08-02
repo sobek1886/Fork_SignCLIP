@@ -2,11 +2,13 @@
 import argparse
 import os
 import sys
+import csv
 import contextlib
 from pathlib import Path
 import xml.etree.ElementTree as ET  # Needed for ELAN segmentation parsing
 
 import webvtt
+import pysrt
 import torch
 import numpy as np
 import mediapipe as mp
@@ -50,24 +52,41 @@ def read_vtt(vtt_path):
         })
     return subtitles
 
+def read_srt(srt_path):
+    """
+    Parse an SRT file using the pysrt library and return a list of subtitle units.
+    Each unit is a dict with keys: 'start', 'end', and 'text'.
+    """
+    subtitles = []
+    subs = pysrt.open(srt_path)
+    for sub in subs:
+        start = sub.start.ordinal / 1000.0  # milliseconds to seconds
+        end = sub.end.ordinal / 1000.0
+        text = " ".join(sub.text.splitlines())
+        subtitles.append({"start": start, "end": end, "text": text})
+    return subtitles
+
 # ----------------------------
 # End subtitle helpers
 # ----------------------------
 
-# Model configurations
-model_configs = [
-    ("multilingual", "signclip_v1_1/baseline_temporal_inference"),
-    ("default", "signclip_bsl/bobsl_islr_finetune_long_context"),
-    ("lip", "signclip_bsl/bobsl_islr_lip_long_context"),
-    ("lip_only", "signclip_bsl/bobsl_islr_lip_only_long_context"),
-]
+# Model configuration
+model_configs = {
+    "multilingual": "signclip_v1_1/baseline_temporal_inference",
+    "bsl": "signclip_bsl/bobsl_islr_finetune_long_context",
+    "bsl_lip": "signclip_bsl/bobsl_islr_lip_long_context",
+    "bsl_lip_only": "signclip_bsl/bobsl_islr_lip_only_long_context",
+    "asl": "signclip_asl/asl_finetune", # fine-tuned on three ASL datasets
+    "suisse": "signclip_suisse/suisse_finetune", # fine-tuned on Signsuisse
+}
 models = {}
 
-base_dir = Path(__file__).resolve().parent.parent
-projects_dir = base_dir / "projects"
-
-for model_name, config_path in model_configs:
-    config_file = projects_dir / "retri" / f"{config_path}.yaml"
+def load_model(model_name):
+    if model_name not in model_configs:
+        raise ValueError(f"Unknown model_name: {model_name}")
+    config_path = model_configs[model_name]
+    base_dir = Path(__file__).resolve().parent.parent
+    config_file = base_dir / "projects" / "retri" / f"{config_path}.yaml"
     model, tokenizer, aligner = MMPTModel.from_pretrained(
         str(config_file),
         video_encoder=None,
@@ -80,6 +99,7 @@ for model_name, config_path in model_configs:
         "tokenizer": tokenizer,
         "aligner": aligner,
     }
+
 
 def pose_normalization_info(pose_header):
     if pose_header.components[0].name == "POSE_LANDMARKS":
@@ -453,11 +473,12 @@ def main():
         default=25,
         help="Frames per second for converting segmentation times to frame indices."
     )
+    parser.add_argument("--fps_file", type=Path, default=None, help="Path to a CSV file mapping video IDs to their FPS. If provided, overrides the global --fps for specific videos.")
     parser.add_argument(
         "--model_name",
         type=str,
         default="default",
-        choices=["default", "lip", "lip_only", "multilingual"],
+        choices=["bsl", "bsl_lip", "bsl_lip_only", "multilingual", "suisse", "asl"],
         help="Model name to use ('default', 'lip', or 'lip_only')."
     )
     parser.add_argument(
@@ -466,7 +487,40 @@ def main():
         default="/scratch/shared/beegfs/zifan/bobsl/video_features/auto_avsr",
         help="Directory where lip feature npy files are stored (used when model_name is 'lip' or 'lip_only')."
     )
+    parser.add_argument(
+        "--language_tag",
+        type=str,
+        default="<en> <bfi>",
+        help="Language tag to prepend to each text input (e.g., '<en> <bfi>')"
+    )
     args = parser.parse_args()
+
+    # --- NEW: Load per-video FPS from fps_file if provided ---
+    fps_map = {}
+    fps_file_path = getattr(args, 'fps_file', None)
+    if fps_file_path:
+        print(f"Loading per-video FPS from: {fps_file_path}")
+        try:
+            with open(fps_file_path, 'r', encoding='utf-8-sig') as f:
+                reader = csv.reader(f)
+                next(reader)  # Skip header
+                for row in reader:
+                    if not row: continue
+                    filename, video_fps_str = row
+                    # Strip extension from filename to get the video ID
+                    video_id = os.path.splitext(filename)[0]
+                    fps_map[video_id] = int(float(video_fps_str))
+            print(f"Loaded FPS for {len(fps_map)} videos.")
+        except FileNotFoundError:
+            print(f"Warning: FPS file not found at {fps_file_path}. Using global FPS.")
+            fps_map = {}
+        except Exception as e:
+            print(f"Warning: Error reading FPS file: {e}. Using global FPS.")
+            fps_map = {}
+    # --- END NEW ---
+
+    # Load only the specified model
+    load_model(args.model_name)
 
     os.makedirs(args.save_dir, exist_ok=True)
 
@@ -493,6 +547,7 @@ def main():
 
     # video_ids.reverse()
     for vid in video_ids:
+        fps = fps_map[vid] if fps_map else args.fps
         save_path = os.path.join(args.save_dir, f"{vid}.npy")
         if os.path.exists(save_path) and not args.overwrite:
             print(f"Embeddings file already exists for video {vid} at {save_path}. Skipping.")
@@ -565,7 +620,7 @@ def main():
             with open(pose_path, "rb") as f:
                 buffer = f.read()
             num_frames = Pose.read(buffer).body.data.shape[0]
-            print(f"Video id {vid} has {num_frames} frames.")
+            print(f"Video id {vid} has {num_frames} frames and fps {fps}.")
             segmentation_path = os.path.join(args.segmentation_dir, f"{vid}.eaf")
             if not os.path.exists(segmentation_path):
                 print(f"Segmentation file not found for video id: {vid}")
@@ -579,7 +634,7 @@ def main():
                 if seg['start'] is not None and seg['end'] is not None and seg['end'] > seg['start']
             ]
             if valid_segments:
-                lengths = [int((seg['end'] - seg['start']) * args.fps) for seg in valid_segments]
+                lengths = [int((seg['end'] - seg['start']) * fps) for seg in valid_segments]
                 count = len(lengths)
                 mean_length = np.mean(lengths)
                 min_length = np.min(lengths)
@@ -603,8 +658,8 @@ def main():
             lip_batch_current = [] if args.model_name in ["lip", "lip_only"] else None
             batch_index = 0
             for segment in tqdm(valid_segments, desc=f"Processing segments for video {vid}"):
-                start_frame = int(segment['start'] * args.fps)
-                end_frame = int(segment['end'] * args.fps)
+                start_frame = int(segment['start'] * fps)
+                end_frame = int(segment['end'] * fps)
                 start_frame = max(0, start_frame)
                 end_frame = min(num_frames, end_frame)
                 if end_frame <= start_frame:
@@ -641,13 +696,15 @@ def main():
                 print(f"No embeddings generated for video {vid}.")
 
         elif args.mode == "subtitle":
-            subtitle_path = os.path.join(args.subtitle_dir, f"{vid}.vtt")
-            if not os.path.exists(subtitle_path):
-                print(f"Subtitle file not found for video id: {vid}")
-                continue
-            subtitles = read_vtt(subtitle_path)
-            if not subtitles:
-                print(f"No subtitles found for video id: {vid}")
+            subtitle_vtt_path = os.path.join(args.subtitle_dir, f"{vid}.vtt")
+            subtitle_srt_path = os.path.join(args.subtitle_dir, f"{vid}.srt")
+
+            if os.path.exists(subtitle_vtt_path):
+                subtitles = read_vtt(subtitle_vtt_path)
+            elif os.path.exists(subtitle_srt_path):
+                subtitles = read_srt(subtitle_srt_path)
+            else:
+                print(f"No subtitle file (.vtt or .srt) found for video id: {vid}")
                 continue
             print(f"Found {len(subtitles)} subtitle units for video {vid}.")
             subtitle_texts = [sub["text"] for sub in subtitles]
@@ -656,7 +713,7 @@ def main():
                 batch_texts = subtitle_texts[i:i+args.batch_size]
                 batch_embeddings = []
                 for text in batch_texts:
-                    text_prompt = f"<en> <bfi> {text}"
+                    text_prompt = f"{args.language_tag} {text}"
                     emb = embed_text(text_prompt, model_name=args.model_name)
                     batch_embeddings.append(emb[0])
                 batch_embeddings = np.stack(batch_embeddings, axis=0)
@@ -696,7 +753,7 @@ def suppress_fairseq_output():
         sys.stdout = old_stdout
         sys.stderr = old_stderr
 
-def live_embed_subtitles(cues, model_name="default", batch_size=_DEFAULT_BATCH_SIZE, tokenize_text_embedding=False):
+def live_embed_subtitles(cues, model_name="default", batch_size=_DEFAULT_BATCH_SIZE, tokenize_text_embedding=False, language_tag="<en> <bfi>"):
     """
     Compute subtitle embeddings for a list of cues.
     
@@ -714,7 +771,7 @@ def live_embed_subtitles(cues, model_name="default", batch_size=_DEFAULT_BATCH_S
         batch_embeddings = []
         for text in batch_texts:
             with suppress_fairseq_output():
-                text_prompt = f"<en> <bfi> {text}"
+                text_prompt = f"{language_tag} {text}"
                 emb = embed_text(text_prompt, model_name=model_name)
             # emb is expected to have shape [1, embedding_dim]; take the first row.
             batch_embeddings.append(emb[0])
@@ -741,7 +798,7 @@ def live_embed_subtitles(cues, model_name="default", batch_size=_DEFAULT_BATCH_S
             batch_token_embeddings = []
             for token in batch_tokens:
                 with suppress_fairseq_output():
-                    text_prompt = f"<en> <bfi> {token}"
+                    text_prompt = f"{language_tag} {token}"
                     emb = embed_text(text_prompt, model_name=model_name)
                 batch_token_embeddings.append(emb[0])
             batch_token_embeddings = np.stack(batch_token_embeddings, axis=0)
