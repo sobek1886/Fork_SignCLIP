@@ -289,20 +289,17 @@ def main():
         buffer = f.read()
         pose = Pose.read(buffer)
 
-        print(score_pose_and_text(pose, "random text", max_frames=max_frames))
-        print(score_pose_and_text(pose, "house", max_frames=max_frames))
-        print(score_pose_and_text(pose, "<en> <ase> house", max_frames=max_frames))
-        print(score_pose_and_text(pose, "<en> <gsg> house", max_frames=max_frames))
-        print(score_pose_and_text(pose, "<en> <fsl> house", max_frames=max_frames))
-        print(score_pose_and_text(pose, "<en> <ase> sun", max_frames=max_frames))
-        print(score_pose_and_text(pose, "<en> <ase> police", max_frames=max_frames))
-        print(score_pose_and_text(pose, "<en> <ase> how are you?", max_frames=max_frames))
+        model_name = "asl_finetune"
+        print(score_pose_and_text(pose, "random text", model_name=model_name, max_frames=max_frames))
+        print(score_pose_and_text(pose, "house", model_name=model_name, max_frames=max_frames))
+        print(score_pose_and_text(pose, "<en> <ase> house", model_name=model_name, max_frames=max_frames))
+        print(score_pose_and_text(pose, "<en> <ase> sun", model_name=model_name, max_frames=max_frames))
+        print(score_pose_and_text(pose, "<en> <ase> police", model_name=model_name, max_frames=max_frames))
+        print(score_pose_and_text(pose, "<en> <ase> how are you?", model_name=model_name, max_frames=max_frames))
 
         text_l = ["<en> <ase> house", "<en> <ase> police"]
         pose_l = [pose, pose]
-        print(score_pose_and_text_batch(pose_l, text_l))
-        
-        print(score_pose_and_text_batch(pose_l, text_l, model_name='asl_finetune'))
+        print(score_pose_and_text_batch(pose_l, text_l, model_name=model_name))
 
 
 if __name__ == "__main__":
