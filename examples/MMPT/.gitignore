@@ -139,3 +139,4 @@ lightning_logs
 demos
 
 slurm*.out
+examples/MMPT/asl_finetune_checkpoint_best.pt
