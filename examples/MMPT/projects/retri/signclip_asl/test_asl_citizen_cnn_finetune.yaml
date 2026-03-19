@@ -1,0 +1,38 @@
+# Test config for CNN-based SignCLIP fine-tuned on ASL-Citizen
+dataset:
+  max_video_len: 32
+  max_len: 64
+  split: train
+  train_for_test: true
+  meta_processor: SignCLIPVideoMetaProcessor
+  video_processor: RWTHFSVideoProcessor
+  text_processor: TextProcessor
+  bert_name: bert-base-cased
+  data_dir: /shares/volk.cl.uzh/zifjia/tensorflow_datasets
+  test_datasets: [['asl_citizen', '1.0.0', '1.0.0-uzh']]
+  test_path: data/<dataset>/test.txt  # placeholder
+  vfeat_dir: /path/to/asl_citizen_i3d_features  # UPDATE THIS
+  vfeat_custom: 1
+  aligner: DSAligner
+  sp_universal_tagging: true
+slurm_config: big
+task_type: local_predict
+fairseq:
+  dataset:
+    batch_size: 512
+    valid_subset: test
+    num_workers: 4
+  common_eval:
+    path: runs/retri_asl/asl_citizen_cnn_finetune/checkpoint_best.pt
+model:
+  model_cls: MMFusionSeparate
+  mm_encoder_cls: null
+  video_encoder_cls: MMBertForEncoder
+  text_encoder_cls: BertModel
+  num_hidden_video_layers: 12
+  vfeat_dim: 1024
+  multimodal_projection: l2_norm
+eval:
+  save_path: runs/retri_asl/asl_citizen_cnn_finetune/eval
+metric: RWTHFSMetric
+predictor: RetrievalPredictor

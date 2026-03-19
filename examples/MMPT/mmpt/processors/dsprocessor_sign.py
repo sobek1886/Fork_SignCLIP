@@ -776,4 +776,122 @@ class SignCLIPSuisseMetaProcessor(MetaProcessor):
         datum = self.data[idx]
         vfeat = self.pose_processer(datum['pose'])
 
+
+# -------------------- SignCLIP CNN (appearance-based) -----------------------
+# Appearance-based variant of SignCLIP that uses pre-extracted CNN features
+# (e.g. I3D BSL-1K CVPR'21 136MB) instead of MediaPipe pose features.
+#
+# Workflow:
+#   1. Extract features offline with extract_asl_citizen_i3d_features.py
+#      → saves {dataset}_{video_id}.npy files to a flat directory
+#   2. Use this MetaProcessor + RWTHFSVideoProcessor in the config:
+#        meta_processor: SignCLIPVideoMetaProcessor
+#        video_processor: RWTHFSVideoProcessor
+#        vfeat_dir: /path/to/i3d_features
+#        vfeat_custom: 1          # keep full 1024-dim (no 512 pooling)
+#        vfeat_dim: 1024          # (under model:)
+#   3. Start from a modified E7.2 checkpoint (prepare_cnn_checkpoint.py)
+#      to keep 12 video BERT layers and the text encoder.
+#
+# Returns a 2-tuple (feat_id, text_prompt) so that mmdataset.py routes
+# through video_processor(feat_id) for .npy loading (standard path).
+
+
+class SignCLIPVideoMetaProcessor(MetaProcessor):
+    """MetaProcessor for appearance-based SignCLIP.
+
+    Uses tensorflow_datasets / sign_language_datasets for train/val/test splits
+    and text labels, but loads pre-extracted CNN features from .npy files
+    instead of computing pose features.  The .npy files must be named:
+        {dataset}_{datum_id}.npy
+    and placed in config.vfeat_dir.
+    """
+
+    def __init__(self, config):
+        super().__init__(config)
+        random.seed(42)
+
+        import tensorflow_datasets as tfds
+        import sign_language_datasets.datasets  # noqa: F401
+        from sign_language_datasets.datasets.config import SignDatasetConfig
+
+        self.vfeat_dir = config.vfeat_dir
+        self.split = config.split
+        self.data = []
+
+        print('================================')
+        print(f'Loading CNN feature metadata ({self.split}) ...')
+        print('================================')
+
+        datasets = config[f'{"test" if config.train_for_test else self.split}_datasets']
+        datasets = [item if len(item) == 3 else [*item, None] for item in datasets]
+
+        for dataset, version, split_version in datasets:
+            print('--------------------------------')
+            print(f'Loading {dataset} {version}, split {split_version} ...')
+            print('--------------------------------')
+
+            # Use same config name as the existing pose-based setup so that the
+            # already-built tfds cache on the cluster is reused.
+            sd_config = SignDatasetConfig(
+                name=config.config_name or 'holistic',
+                version=version,
+                include_video=False,
+                include_pose="holistic",
+                extra={'split': split_version} if split_version else {},
+            )
+            split = 'validation' if self.split == 'valid' else self.split
+            data_l = tfds.load(
+                name=dataset,
+                builder_kwargs=dict(config=sd_config),
+                data_dir=config.data_dir,
+            )[split]
+
+            count = 0
+            missing = 0
+            for datum in tqdm(data_l):
+                datum_id = datum['id'].numpy().decode('utf-8')
+                text_content = datum['text'].numpy().decode('utf-8')
+                feat_id = f"{dataset}_{datum_id}"
+                feat_path = os.path.join(self.vfeat_dir, feat_id + ".npy")
+
+                if not os.path.exists(feat_path):
+                    missing += 1
+                    continue
+
+                if config.test_in_vocab or config.preprocess_gloss:
+                    if dataset == 'asl_citizen':
+                        text_content = text_content.lower()
+                        text_content = text_content.rstrip(string.digits)
+                    elif dataset == 'sem_lex':
+                        text_content = re.sub(r'_\d+$', '', text_content)
+                        text_content = text_content.replace('_', ' ')
+
+                if config.sp_universal_tagging:
+                    tag_prompt = "<en> <ase>"
+                else:
+                    tag_prompt = "<American Sign Language>"
+
+                self.data.append({
+                    'id': feat_id,
+                    'text': f"{tag_prompt} {text_content}",
+                })
+                count += 1
+
+            print(f'{dataset}: {count} examples with CNN features, {missing} missing.')
+
+        if self.split == 'train':
+            random.shuffle(self.data)
+
+        self.text_to_idxs = defaultdict(list)
+        for idx, datum in enumerate(self.data):
+            self.text_to_idxs[datum['text']].append(idx)
+
+        print(f'Total: {len(self.data)} examples, {len(self.text_to_idxs)} unique prompts.')
+
+    def __getitem__(self, idx):
+        datum = self.data[idx]
+        # Return 2-tuple so mmdataset.py calls video_processor(feat_id) for .npy loading
+        return datum['id'], datum['text']
+
         return idx, datum['text'], vfeat
