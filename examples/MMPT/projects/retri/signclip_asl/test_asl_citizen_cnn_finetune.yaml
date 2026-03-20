@@ -4,13 +4,11 @@ dataset:
   max_len: 64
   split: train
   train_for_test: true
-  meta_processor: SignCLIPVideoMetaProcessor
+  meta_processor: SignCLIPVideoCSVMetaProcessor
   video_processor: RWTHFSVideoProcessor
   text_processor: TextProcessor
   bert_name: bert-base-cased
-  data_dir: /shares/volk.cl.uzh/zifjia/tensorflow_datasets
-  test_datasets: [['asl_citizen', '1.0.0', '1.0.0-uzh']]
-  test_path: data/<dataset>/test.txt  # placeholder
+  splits_dir: /home/psobecki/ASL_Citizen/splits
   vfeat_dir: /home/psobecki/ASL_Citizen/i3d_features
   vfeat_custom: 1
   aligner: DSAligner
