@@ -4,8 +4,8 @@
 #SBATCH --gpus=1
 #SBATCH --job-name=i3d_extract
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=4
-#SBATCH --time=08:00:00
+#SBATCH --cpus-per-task=5
+#SBATCH --time=04:00:00
 #SBATCH --output=slurm_i3d_extract_%A.out
 
 module purge
@@ -17,7 +17,8 @@ source .venv/bin/activate
 export PYTHONPATH=$HOME/Fork_SignCLIP:$PYTHONPATH
 
 srun python extract_asl_citizen_i3d_features.py \
-    --video_dir  /home/psobecki/ASL_Citizen/videos \
-    --output_dir /home/psobecki/ASL_Citizen/i3d_features \
+    --video_dir   /home/psobecki/ASL_Citizen/videos \
+    --output_dir  /home/psobecki/ASL_Citizen/i3d_features \
     --i3d_weights /home/psobecki/bsl5k.pth.tar \
-    --batch_size 32
+    --workers     4 \
+    --batch_size  128
