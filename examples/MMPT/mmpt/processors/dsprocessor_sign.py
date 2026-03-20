@@ -893,3 +893,70 @@ class SignCLIPVideoMetaProcessor(MetaProcessor):
         datum = self.data[idx]
         # Return 2-tuple so mmdataset.py calls video_processor(feat_id) for .npy loading
         return datum['id'], datum['text']
+
+
+# -------------------- SignCLIP CNN — CSV-based (no tfds) -----------------------
+# Replaces SignCLIPVideoMetaProcessor for clusters where the tfds cache is not
+# available.  Reads directly from the ASL-Citizen split CSVs:
+#     {splits_dir}/train.csv  |  val.csv  |  test.csv
+# Each CSV has columns: Participant ID, Video file, Gloss, ASL-LEX Code
+#
+# Config fields required:
+#   splits_dir:   /path/to/ASL_Citizen/splits
+#   vfeat_dir:    /path/to/ASL_Citizen/i3d_features
+#   dataset_name: asl_citizen  (optional, default)
+
+
+class SignCLIPVideoCSVMetaProcessor(MetaProcessor):
+    """CSV-based MetaProcessor for appearance-based SignCLIP on ASL-Citizen.
+
+    Does not require tensorflow_datasets.  Reads split CSVs shipped with the
+    ASL-Citizen dataset.  Feature files must be named:
+        {dataset_name}_{video_basename_without_ext}.npy
+    """
+
+    _SPLIT_FILES = {'train': 'train.csv', 'valid': 'val.csv', 'test': 'test.csv'}
+
+    def __init__(self, config):
+        super().__init__(config)
+        random.seed(42)
+        import csv
+
+        self.vfeat_dir = config.vfeat_dir
+        dataset_name = config.dataset_name or 'asl_citizen'
+
+        split_key = 'test' if config.train_for_test else self.split
+        csv_path = os.path.join(config.splits_dir, self._SPLIT_FILES[split_key])
+
+        print(f'Loading CNN feature metadata ({split_key}) from {csv_path} ...')
+
+        self.data = []
+        count = missing = 0
+
+        with open(csv_path, newline='') as f:
+            for row in csv.DictReader(f):
+                video_id = os.path.splitext(row['Video file'])[0]
+                feat_id = f"{dataset_name}_{video_id}"
+                feat_path = os.path.join(self.vfeat_dir, feat_id + '.npy')
+
+                if not os.path.exists(feat_path):
+                    missing += 1
+                    continue
+
+                tag = '<en> <ase>' if config.sp_universal_tagging else '<American Sign Language>'
+                self.data.append({'id': feat_id, 'text': f"{tag} {row['Gloss']}"})
+                count += 1
+
+        if self.split == 'train':
+            random.shuffle(self.data)
+
+        self.text_to_idxs = defaultdict(list)
+        for idx, datum in enumerate(self.data):
+            self.text_to_idxs[datum['text']].append(idx)
+
+        print(f'Loaded {count} examples ({missing} missing .npy), '
+              f'{len(self.text_to_idxs)} unique glosses.')
+
+    def __getitem__(self, idx):
+        datum = self.data[idx]
+        return datum['id'], datum['text']
