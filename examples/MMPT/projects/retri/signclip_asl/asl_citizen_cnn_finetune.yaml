@@ -21,6 +21,9 @@ dataset:
   text_processor: TextProcessor
   bert_name: bert-base-cased
   splits_dir: /home/psobecki/ASL_Citizen/splits
+  train_path: placeholder
+  val_path: placeholder
+  test_path: placeholder
   vfeat_dir: /home/psobecki/ASL_Citizen/i3d_features
   vfeat_custom: 1                # keep full 1024-dim (skip 512 pooling in RWTHFSVideoProcessor)
   aligner: DSAligner
