@@ -19,6 +19,7 @@ module load 2025
 cd $HOME/Fork_SignCLIP/examples/MMPT
 source .venv/bin/activate
 export PYTHONPATH=$HOME/Fork_SignCLIP:$PYTHONPATH
+export PATH="$HOME/Fork_SignCLIP/examples/MMPT/.venv/bin:$PATH"
 
 srun python locallaunch.py \
     projects/retri/signclip_asl/asl_citizen_cnn_finetune.yaml \
