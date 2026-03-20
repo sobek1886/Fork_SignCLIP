@@ -7,12 +7,22 @@
 TODO (huxu): a general fairseq criterion for all your pre-defined losses.
 """
 
+import os
+
 from fairseq.criterions import FairseqCriterion, register_criterion
 from fairseq.logging import metrics
+
+try:
+    import mlflow as _mlflow
+    _MLFLOW = True
+except ImportError:
+    _MLFLOW = False
 
 
 @register_criterion("mmloss")
 class MMCriterion(FairseqCriterion):
+    _mlflow_step = 0
+
     def __init__(self, task):
         super().__init__(task)
         # TODO (huxu): wrap forward call of loss_fn and eval_fn into task.
@@ -51,7 +61,14 @@ class MMCriterion(FairseqCriterion):
         Then we take the mean of each worker."""
         loss_sum = sum(log.get("loss", 0.0) for log in logging_outputs)
         sample_size = sum(log.get("sample_size", 0) for log in logging_outputs)
-        metrics.log_scalar("loss", loss_sum / sample_size, round=3)
+        loss_val = loss_sum / sample_size
+        metrics.log_scalar("loss", loss_val, round=3)
+
+        if _MLFLOW and int(os.environ.get("LOCAL_RANK", 0)) == 0:
+            if _mlflow.active_run() is not None:
+                _mlflow.log_metric("train_loss", round(float(loss_val), 5),
+                                   step=MMCriterion._mlflow_step)
+        MMCriterion._mlflow_step += 1
 
     @staticmethod
     def logging_outputs_can_be_summed() -> bool:

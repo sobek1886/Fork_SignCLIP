@@ -6,6 +6,7 @@
 make a general fairseq task for MM pretraining.
 """
 
+import os
 import random
 
 from fairseq.tasks import LegacyFairseqTask, register_task
@@ -14,6 +15,12 @@ from .task import Task
 from .retritask import RetriTask
 from ..datasets import FairseqMMDataset
 from .. import utils
+
+try:
+    import mlflow as _mlflow
+    _MLFLOW = True
+except ImportError:
+    _MLFLOW = False
 
 
 @register_task("mmtask")
@@ -39,6 +46,29 @@ class FairseqMMTask(LegacyFairseqTask):
         self.mmtask.build_dataset()
         self.mmtask.build_model()
         self.mmtask.build_loss()
+
+        local_rank = int(os.environ.get("LOCAL_RANK", os.environ.get("SLURM_LOCALID", 0)))
+        if _MLFLOW and local_rank == 0:
+            try:
+                _mlflow.set_tracking_uri("https://mlflow.ai.mytkhgroup.com/")
+                _mlflow.set_experiment("signclip-cnn")
+                run_name = os.path.splitext(os.path.basename(args.taskconfig))[0]
+                _mlflow.start_run(run_name=run_name)
+                _mlflow.log_params({
+                    "vfeat_dim": int(config.model.vfeat_dim),
+                    "max_video_len": int(config.dataset.max_video_len),
+                    "batch_size": int(config.fairseq.dataset.batch_size),
+                    "lr": float(config.fairseq.optimization.lr[0]),
+                    "max_epoch": int(config.fairseq.optimization.max_epoch),
+                    "num_hidden_video_layers": int(config.model.num_hidden_video_layers),
+                    "meta_processor": str(config.dataset.meta_processor),
+                    "restore_file": str(config.fairseq.checkpoint.restore_file),
+                })
+                _mlflow.set_tag("slurm_job_id", os.environ.get("SLURM_JOB_ID", "unknown"))
+                _mlflow.set_tag("slurm_node", os.environ.get("SLURMD_NODENAME", "unknown"))
+                print("[MLflow] Run started:", _mlflow.active_run().info.run_id)
+            except Exception as exc:
+                print(f"[MLflow] Warning: could not initialize run: {exc}")
 
     def load_dataset(self, split, **kwargs):
         split_map = {
