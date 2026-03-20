@@ -893,5 +893,3 @@ class SignCLIPVideoMetaProcessor(MetaProcessor):
         datum = self.data[idx]
         # Return 2-tuple so mmdataset.py calls video_processor(feat_id) for .npy loading
         return datum['id'], datum['text']
-
-        return idx, datum['text'], vfeat

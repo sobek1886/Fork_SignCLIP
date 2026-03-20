@@ -11,7 +11,7 @@ dataset:
   data_dir: /shares/volk.cl.uzh/zifjia/tensorflow_datasets
   test_datasets: [['asl_citizen', '1.0.0', '1.0.0-uzh']]
   test_path: data/<dataset>/test.txt  # placeholder
-  vfeat_dir: /path/to/asl_citizen_i3d_features  # UPDATE THIS
+  vfeat_dir: /home/psobecki/ASL_Citizen/i3d_features
   vfeat_custom: 1
   aligner: DSAligner
   sp_universal_tagging: true
@@ -31,7 +31,6 @@ model:
   text_encoder_cls: BertModel
   num_hidden_video_layers: 12
   vfeat_dim: 1024
-  multimodal_projection: l2_norm
 eval:
   save_path: runs/retri_asl/asl_citizen_cnn_finetune/eval
 metric: RWTHFSMetric

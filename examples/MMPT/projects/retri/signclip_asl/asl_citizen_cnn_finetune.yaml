@@ -26,7 +26,7 @@ dataset:
   test_path: data/<dataset>/test.txt    # placeholder
   val_path: data/<dataset>/val.txt      # placeholder
   train_path: data/<dataset>/train.txt  # placeholder
-  vfeat_dir: /path/to/asl_citizen_i3d_features  # UPDATE THIS
+  vfeat_dir: /home/psobecki/ASL_Citizen/i3d_features
   vfeat_custom: 1                # keep full 1024-dim (skip 512 pooling in RWTHFSVideoProcessor)
   aligner: DSAligner
   sp_universal_tagging: true
@@ -67,7 +67,6 @@ model:
   text_encoder_cls: BertModel
   num_hidden_video_layers: 12
   vfeat_dim: 1024               # I3D output dimension
-  multimodal_projection: l2_norm
 loss:
   loss_cls: MMContraLoss
 eval:
