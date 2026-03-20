@@ -3,8 +3,11 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 import os
+import sys
 
 from mmpt.utils import recursive_config
+
+_PYTHON = sys.executable
 
 
 class BaseJob(object):
@@ -27,24 +30,24 @@ class LocalJob(BaseJob):
 
     CMD_CONFIG = {
         "local_single": [
-            "fairseq-train", "[yaml]", "--user-dir", "mmpt",
+            _PYTHON, "-m", "fairseq_cli.train", "[yaml]", "--user-dir", "mmpt",
             "--task", "mmtask", "--arch", "mmarch",
             "--criterion", "mmloss",
             "--distributed-world-size", "1"
         ],
         "local_small": [
-            "fairseq-train", "[yaml]", "--user-dir", "mmpt",
+            _PYTHON, "-m", "fairseq_cli.train", "[yaml]", "--user-dir", "mmpt",
             "--task", "mmtask", "--arch", "mmarch",
             "--criterion", "mmloss",
             "--distributed-world-size", "2"
         ],
         "local_big": [
-            "fairseq-train", "[yaml]", "--user-dir", "mmpt",
+            _PYTHON, "-m", "fairseq_cli.train", "[yaml]", "--user-dir", "mmpt",
             "--task", "mmtask", "--arch", "mmarch",
             "--criterion", "mmloss",
             "--distributed-world-size", "4"
         ],
-        "local_predict": ["python", "mmpt_cli/predict.py", "[yaml]"],
+        "local_predict": [_PYTHON, "mmpt_cli/predict.py", "[yaml]"],
     }
 
     def __init__(self, yaml_file, job_type=None, dryrun=False):
