@@ -6,6 +6,7 @@
 make a general fairseq task for MM pretraining.
 """
 
+import atexit
 import os
 import random
 
@@ -74,8 +75,41 @@ class FairseqMMTask(LegacyFairseqTask):
                 _mlflow.set_tag("slurm_job_id", os.environ.get("SLURM_JOB_ID", "unknown"))
                 _mlflow.set_tag("slurm_node", os.environ.get("SLURMD_NODENAME", "unknown"))
                 print("[MLflow] Run started:", _mlflow.active_run().info.run_id)
+
+                job_id = os.environ.get("SLURM_JOB_ID", "")
+                job_name = os.environ.get("SLURM_JOB_NAME", "")
+                self._mlflow_log_file = (
+                    os.path.join(os.getcwd(), "jobs", "output",
+                                 f"slurm_{job_name}_{job_id}.out")
+                    if job_id and job_name else None
+                )
+
+                def _mlflow_cleanup():
+                    try:
+                        if _mlflow.active_run() is None:
+                            return
+                        if self._mlflow_log_file and os.path.exists(self._mlflow_log_file):
+                            _mlflow.log_artifact(self._mlflow_log_file)
+                        _mlflow.end_run()
+                    except Exception as exc:
+                        print(f"[MLflow] Warning: cleanup failed: {exc}")
+
+                atexit.register(_mlflow_cleanup)
             except Exception as exc:
                 print(f"[MLflow] Warning: could not initialize run: {exc}")
+                self._mlflow_log_file = None
+
+    def begin_valid_epoch(self, epoch, model):
+        from ..losses.fairseqmmloss import MMCriterion
+        MMCriterion._phase = "valid"
+        local_rank = int(os.environ.get("LOCAL_RANK", os.environ.get("SLURM_LOCALID", 0)))
+        if _MLFLOW and local_rank == 0:
+            try:
+                log_file = getattr(self, "_mlflow_log_file", None)
+                if log_file and os.path.exists(log_file) and _mlflow.active_run() is not None:
+                    _mlflow.log_artifact(log_file)
+            except Exception as exc:
+                print(f"[MLflow] Warning: could not upload log artifact: {exc}")
 
     def load_dataset(self, split, **kwargs):
         split_map = {
