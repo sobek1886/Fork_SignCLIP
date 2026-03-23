@@ -39,19 +39,19 @@ fairseq:
     batch_size: 256              # I3D clips are shorter → can use larger batches
   optimization:
     lr:
-    - 2.0e-04
-    clip_norm: 1.0
+    - 5.0e-05
+    clip_norm: 2.0
     optimizer: adam
     adam_betas: (0.9, 0.98)
     lr_scheduler: polynomial_decay
     total_num_update: 1000000
-    warmup_updates: 500
+    warmup_updates: 200
     weight_decay: 0.0
     ddp_backend: no_c10d
     max_epoch: 25
   checkpoint:
-    # CNN-ready checkpoint: videomlp.linear1 re-initialised, all other weights from E7.2
-    restore_file: runs/retri_v1_1/baseline_temporal_cnn_ready.pt
+    # Phase 1 checkpoint: videomlp trained on I3D, BERT from E7.2
+    restore_file: runs/retri_asl/asl_citizen_cnn_phase1/checkpoint_best.pt
     no_epoch_checkpoints: true
     reset_optimizer: true
     reset_dataloader: true

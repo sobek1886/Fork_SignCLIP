@@ -47,6 +47,13 @@ class FairseqMMTask(LegacyFairseqTask):
         self.mmtask.build_model()
         self.mmtask.build_loss()
 
+        if getattr(config.model, 'freeze_bert', False):
+            for name, param in self.mmtask.model.named_parameters():
+                if 'videomlp' not in name:
+                    param.requires_grad_(False)
+            trainable = [n for n, p in self.mmtask.model.named_parameters() if p.requires_grad]
+            print(f"[freeze_bert] Trainable parameters ({len(trainable)}): {trainable}")
+
         local_rank = int(os.environ.get("LOCAL_RANK", os.environ.get("SLURM_LOCALID", 0)))
         if _MLFLOW and local_rank == 0:
             try:
