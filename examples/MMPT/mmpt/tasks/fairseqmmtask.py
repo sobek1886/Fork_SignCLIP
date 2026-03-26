@@ -61,6 +61,10 @@ class FairseqMMTask(LegacyFairseqTask):
                 _mlflow.set_tracking_uri("https://mlflow.ai.mytkhgroup.com/")
                 _mlflow.set_experiment("signclip-cnn")
                 run_name = os.path.splitext(os.path.basename(args.taskconfig))[0]
+                try:
+                    _mlflow.enable_system_metrics_logging()
+                except AttributeError:
+                    pass  # requires mlflow>=2.8 and pynvml
                 _mlflow.start_run(run_name=run_name)
                 _mlflow.log_params({
                     "vfeat_dim": int(config.model.vfeat_dim),
@@ -70,7 +74,7 @@ class FairseqMMTask(LegacyFairseqTask):
                     "max_epoch": int(config.fairseq.optimization.max_epoch),
                     "num_hidden_video_layers": int(config.model.num_hidden_video_layers),
                     "meta_processor": str(config.dataset.meta_processor),
-                    "restore_file": str(config.fairseq.checkpoint.restore_file),
+                    "restore_file": str(getattr(config.fairseq.checkpoint, "restore_file", "none")),
                 })
                 _mlflow.set_tag("slurm_job_id", os.environ.get("SLURM_JOB_ID", "unknown"))
                 _mlflow.set_tag("slurm_node", os.environ.get("SLURMD_NODENAME", "unknown"))
