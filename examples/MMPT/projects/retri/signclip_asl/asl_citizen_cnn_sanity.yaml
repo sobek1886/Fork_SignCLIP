@@ -32,10 +32,10 @@ fairseq:
     adam_betas: (0.9, 0.98)
     lr_scheduler: polynomial_decay
     total_num_update: 1000000
-    warmup_updates: 10
+    warmup_updates: 50
     weight_decay: 0.0
     ddp_backend: no_c10d
-    max_epoch: 30
+    max_epoch: 500
   checkpoint:
     no_epoch_checkpoints: true
     save_dir: runs/retri_asl/asl_citizen_cnn_sanity
