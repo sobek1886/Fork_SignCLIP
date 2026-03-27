@@ -43,7 +43,7 @@ fairseq:
     lr_scheduler: polynomial_decay
     total_num_update: 1000000
     warmup_updates: 500
-    weight_decay: 0.0
+    weight_decay: 0.01
     ddp_backend: no_c10d
     max_epoch: 50
   checkpoint:

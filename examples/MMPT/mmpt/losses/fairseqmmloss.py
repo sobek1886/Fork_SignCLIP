@@ -23,6 +23,8 @@ except ImportError:
 class MMCriterion(FairseqCriterion):
     _mlflow_step = 0
     _phase = 'train'  # toggled to 'valid' by FairseqMMTask.begin_valid_epoch
+    _valid_loss_sum = 0.0
+    _valid_loss_count = 0
 
     def __init__(self, task):
         super().__init__(task)
@@ -65,15 +67,17 @@ class MMCriterion(FairseqCriterion):
         loss_val = loss_sum / sample_size
         metrics.log_scalar("loss", loss_val, round=3)
 
-        phase = MMCriterion._phase  # capture before any modification
+        phase = MMCriterion._phase
 
-        if _MLFLOW and int(os.environ.get("LOCAL_RANK", 0)) == 0:
-            if _mlflow.active_run() is not None:
-                metric_name = "valid_loss" if phase == "valid" else "train_loss"
-                _mlflow.log_metric(metric_name, round(float(loss_val), 5),
-                                   step=MMCriterion._mlflow_step)
-
-        if phase == "train":
+        if phase == "valid":
+            # Accumulate; begin_epoch will log the average once per epoch.
+            MMCriterion._valid_loss_sum += float(loss_val)
+            MMCriterion._valid_loss_count += 1
+        else:
+            if _MLFLOW and int(os.environ.get("LOCAL_RANK", 0)) == 0:
+                if _mlflow.active_run() is not None:
+                    _mlflow.log_metric("train_loss", round(float(loss_val), 5),
+                                       step=MMCriterion._mlflow_step)
             MMCriterion._mlflow_step += 1
 
     @staticmethod

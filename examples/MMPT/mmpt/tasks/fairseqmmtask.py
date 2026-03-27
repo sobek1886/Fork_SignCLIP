@@ -106,6 +106,14 @@ class FairseqMMTask(LegacyFairseqTask):
     def begin_epoch(self, epoch, model):
         super().begin_epoch(epoch, model)
         from ..losses.fairseqmmloss import MMCriterion
+        local_rank = int(os.environ.get("LOCAL_RANK", os.environ.get("SLURM_LOCALID", 0)))
+        if _MLFLOW and local_rank == 0 and MMCriterion._valid_loss_count > 0:
+            if _mlflow.active_run() is not None:
+                avg = MMCriterion._valid_loss_sum / MMCriterion._valid_loss_count
+                _mlflow.log_metric("valid_loss", round(avg, 5),
+                                   step=MMCriterion._mlflow_step)
+        MMCriterion._valid_loss_sum = 0.0
+        MMCriterion._valid_loss_count = 0
         MMCriterion._phase = "train"
 
     def begin_valid_epoch(self, epoch, model):
