@@ -26,7 +26,7 @@ fairseq:
     batch_size: 100
   optimization:
     lr:
-    - 1.0e-1
+    - 5.0e-5
     clip_norm: 2.0
     optimizer: adam
     adam_betas: (0.9, 0.98)
