@@ -65,16 +65,17 @@ class MMCriterion(FairseqCriterion):
         loss_val = loss_sum / sample_size
         metrics.log_scalar("loss", loss_val, round=3)
 
+        phase = MMCriterion._phase  # capture before any modification
+
         if _MLFLOW and int(os.environ.get("LOCAL_RANK", 0)) == 0:
             if _mlflow.active_run() is not None:
-                phase = MMCriterion._phase
                 metric_name = "valid_loss" if phase == "valid" else "train_loss"
                 _mlflow.log_metric(metric_name, round(float(loss_val), 5),
                                    step=MMCriterion._mlflow_step)
-                if phase == "valid":
-                    MMCriterion._phase = "train"  # reset after valid pass
 
-        if MMCriterion._phase == "train":
+        if phase == "valid":
+            MMCriterion._phase = "train"  # reset after valid pass
+        else:
             MMCriterion._mlflow_step += 1
 
     @staticmethod
