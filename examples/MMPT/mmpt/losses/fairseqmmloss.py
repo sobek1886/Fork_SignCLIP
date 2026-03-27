@@ -73,9 +73,7 @@ class MMCriterion(FairseqCriterion):
                 _mlflow.log_metric(metric_name, round(float(loss_val), 5),
                                    step=MMCriterion._mlflow_step)
 
-        if phase == "valid":
-            MMCriterion._phase = "train"  # reset after valid pass
-        else:
+        if phase == "train":
             MMCriterion._mlflow_step += 1
 
     @staticmethod

@@ -103,6 +103,11 @@ class FairseqMMTask(LegacyFairseqTask):
                 print(f"[MLflow] Warning: could not initialize run: {exc}")
                 self._mlflow_log_file = None
 
+    def begin_epoch(self, epoch, model):
+        super().begin_epoch(epoch, model)
+        from ..losses.fairseqmmloss import MMCriterion
+        MMCriterion._phase = "train"
+
     def begin_valid_epoch(self, epoch, model):
         from ..losses.fairseqmmloss import MMCriterion
         MMCriterion._phase = "valid"
