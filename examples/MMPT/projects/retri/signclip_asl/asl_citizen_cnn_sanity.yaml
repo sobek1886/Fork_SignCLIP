@@ -38,6 +38,8 @@ fairseq:
     max_epoch: 500
   checkpoint:
     no_epoch_checkpoints: true
+    no_last_checkpoints: true
+    restore_file: none.pt
     save_dir: runs/retri_asl/asl_citizen_cnn_sanity
 task_type: sweep_small
 model:
