@@ -30,13 +30,13 @@ fairseq:
   common:
     fp16: true
     tensorboard_logdir: run
-    log_interval: 1000
+    log_interval: 20
   dataset:
     num_workers: 4
     batch_size: 256
   optimization:
     lr:
-    - 1.0e-04
+    - 5.0e-05
     clip_norm: 2.0
     optimizer: adam
     adam_betas: (0.9, 0.98)
