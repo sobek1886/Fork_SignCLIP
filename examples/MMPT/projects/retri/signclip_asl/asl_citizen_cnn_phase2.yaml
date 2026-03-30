@@ -1,9 +1,7 @@
-# Phase 1: train only VideoTokenMLP with BERT encoders frozen.
-# All BERT parameters (video + text encoder) are frozen; only
-# videomlp.linear1, videomlp.linear2, videomlp.LayerNorm are updated.
-# This lets the projection head learn to map I3D features into the
-# embedding space that the pretrained BERT already understands before
-# we fine-tune the full model in Phase 2.
+# Phase 2: full end-to-end fine-tuning from Phase 1 checkpoint.
+# All parameters (BERT encoders + videomlp) are unfrozen.
+# Uses finetune_from_model so interrupted jobs resume from checkpoint_last.pt
+# without reloading phase1 weights again (optimizer is reset on first launch only).
 dataset:
   max_video_len: 32
   max_len: 64
@@ -30,23 +28,20 @@ fairseq:
     batch_size: 256
   optimization:
     lr:
-    - 1.0e-03
-    clip_norm: 1.0
+    - 5.0e-05
+    clip_norm: 2.0
     optimizer: adam
     adam_betas: (0.9, 0.98)
     lr_scheduler: polynomial_decay
     total_num_update: 1000000
-    warmup_updates: 50
+    warmup_updates: 500
     weight_decay: 0.0
     ddp_backend: no_c10d
-    max_epoch: 5
+    max_epoch: 50
   checkpoint:
-    restore_file: runs/retri_v1_1/baseline_temporal_cnn_ready.pt
     no_epoch_checkpoints: true
-    reset_optimizer: true
-    reset_dataloader: true
-    reset_meters: true
-    save_dir: runs/retri_asl/asl_citizen_cnn_phase1
+    finetune_from_model: runs/retri_asl/asl_citizen_cnn_phase1/checkpoint_best.pt
+    save_dir: runs/retri_asl/asl_citizen_cnn_phase2
 task_type: sweep_small
 model:
   model_cls: MMFusionSeparate
@@ -55,8 +50,7 @@ model:
   text_encoder_cls: BertModel
   num_hidden_video_layers: 12
   vfeat_dim: 1024
-  freeze_bert: true          # freeze video+text BERT, train only videomlp
 loss:
   loss_cls: MMContraLoss
 eval:
-  save_path: runs/retri_asl/asl_citizen_cnn_phase1
+  save_path: runs/retri_asl/asl_citizen_cnn_phase2
