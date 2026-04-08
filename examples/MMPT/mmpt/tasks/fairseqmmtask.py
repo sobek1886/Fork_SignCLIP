@@ -84,7 +84,7 @@ class FairseqMMTask(LegacyFairseqTask):
                 job_name = os.environ.get("SLURM_JOB_NAME", "")
                 self._mlflow_log_file = (
                     os.path.join(os.getcwd(), "jobs", "output",
-                                 f"slurm_{job_name}_{job_id}.out")
+                                 f"slurm_{job_name}_{job_id}.txt")
                     if job_id and job_name else None
                 )
 

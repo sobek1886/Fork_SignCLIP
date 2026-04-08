@@ -6,7 +6,7 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=2
 #SBATCH --time=2:00:00
-#SBATCH --output=jobs/output/slurm_cnn_sanity_%A.out
+#SBATCH --output=jobs/output/slurm_cnn_sanity_%A.txt
 
 module purge
 module load 2025
