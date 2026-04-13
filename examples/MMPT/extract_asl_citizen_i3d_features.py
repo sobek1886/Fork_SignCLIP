@@ -1,8 +1,8 @@
-"""Extract I3D BSL-5K features from ASL-Citizen video files.
+"""Extract I3D features from ASL-Citizen video files.
 
-Uses the CVPR'21 M+D+A 136MB model (bsl5k.pth.tar) with the self-contained
-InceptionI3d implementation in mmpt/processors/models/i3d.py — no external
-repositories required.
+Works with any InceptionI3d checkpoint (BSL-5K 136MB, WLASL fine-tuned, etc.)
+using the self-contained InceptionI3d implementation in mmpt/processors/models/i3d.py
+— no external repositories required.
 
 Output:
     One .npy file per video at {output_dir}/{dataset_name}_{video_id}.npy
@@ -13,11 +13,22 @@ SignCLIPVideoMetaProcessor: f"{dataset}_{datum['id']}" from tensorflow_datasets.
 For ASL-Citizen the video file basename (without extension) should equal
 datum['id'] from the asl_citizen tfds split.
 
-Usage:
+Usage (BSL-5K model):
     python extract_asl_citizen_i3d_features.py \\
         --video_dir   /path/to/asl_citizen/videos \\
         --output_dir  /path/to/i3d_features \\
         --i3d_weights /path/to/bsl5k.pth.tar \\
+        --num_classes 5383 \\
+        --dataset_name asl_citizen \\
+        --workers 4 \\
+        --batch_size 128
+
+Usage (WLASL fine-tuned model):
+    python extract_asl_citizen_i3d_features.py \\
+        --video_dir   /path/to/asl_citizen/videos \\
+        --output_dir  /path/to/i3d_wlasl_features \\
+        --i3d_weights /path/to/I3D_wlasl.tar \\
+        --num_classes 2000 \\
         --dataset_name asl_citizen \\
         --workers 4 \\
         --batch_size 128
@@ -120,7 +131,7 @@ def _preprocess_worker(args):
 
 # ── Model loading ─────────────────────────────────────────────────────────────
 
-def load_i3d(weights_path, device):
+def load_i3d(weights_path, device, num_classes):
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     from mmpt.processors.models.i3d import InceptionI3d  # noqa: PLC0415
 
@@ -128,12 +139,15 @@ def load_i3d(weights_path, device):
     state_dict = state_dict.get('state_dict', state_dict)
     state_dict = {k.replace('module.', ''): v for k, v in state_dict.items()}
 
-    model = InceptionI3d(num_classes=5383, in_channels=3)
-    missing, unexpected = model.load_state_dict(state_dict, strict=True)
-    if missing or unexpected:
-        raise RuntimeError(
-            f'Weight mismatch — missing: {missing[:3]}, unexpected: {unexpected[:3]}'
-        )
+    model = InceptionI3d(num_classes=num_classes, in_channels=3)
+    # strict=False: the classification head is irrelevant for extract_features();
+    # this also allows loading fine-tuned checkpoints whose head size differs.
+    missing, unexpected = model.load_state_dict(state_dict, strict=False)
+    backbone_missing = [k for k in missing if not k.startswith('logits')]
+    if backbone_missing:
+        raise RuntimeError(f'Backbone weights missing: {backbone_missing[:5]}')
+    if unexpected:
+        print(f'  [load_i3d] {len(unexpected)} unexpected key(s) ignored (e.g. {unexpected[0]})')
     return model.to(device).eval()
 
 
@@ -159,7 +173,13 @@ def main():
     parser.add_argument('--video_dir',    required=True)
     parser.add_argument('--output_dir',   required=True)
     parser.add_argument('--i3d_weights',  required=True,
-                        help='Path to bsl5k.pth.tar')
+                        help='Path to I3D checkpoint (.pth.tar). '
+                             'E.g. bsl5k.pth.tar (--num_classes 5383) or '
+                             'I3D_wlasl.tar (--num_classes 2000).')
+    parser.add_argument('--num_classes',  type=int, default=2000,
+                        help='Output classes of the I3D checkpoint. '
+                             'BSL-5K: 5383. WLASL2000: 2000. '
+                             'Only affects the classification head (unused during extraction).')
     parser.add_argument('--dataset_name', default='asl_citizen')
     parser.add_argument('--workers',      type=int, default=4,
                         help='CPU worker processes for parallel video decoding. '
@@ -180,9 +200,9 @@ def main():
     print(f'Device: {device}')
     print(f'CPU workers: {args.workers}  |  GPU batch size: {args.batch_size}  |  Prefetch: {prefetch} videos')
 
-    print('Loading BSL-5K I3D model ...')
-    model = load_i3d(args.i3d_weights, device)
-    print('Model loaded (0 missing / unexpected keys)')
+    print(f'Loading I3D model ({args.num_classes} classes) ...')
+    model = load_i3d(args.i3d_weights, device, args.num_classes)
+    print('Model loaded.')
 
     exts = ('*.mp4', '*.avi', '*.mov', '*.mkv', '*.webm')
     video_files = []
