@@ -107,7 +107,7 @@ class RWTHFST2VMetric(RetrievalMetric):
 
     def __init__(self, config, metric_names=["R1", "R5", "R10", "P1", "P5", 'P10', "MedianR", "MeanR"]):
         super().__init__(config, metric_names)
-        self.error = True
+        self.error = False
 
     def compute_metrics(self, outputs, texts, video_ids, **kwargs):
         row_ids = [idx for idx, text in enumerate(texts) if text not in texts[:idx]]
@@ -192,7 +192,7 @@ class RWTHFSV2TMetric(RetrievalMetric):
 
     def __init__(self, config, metric_names=["R1", "R5", "R10", "MedianR", "MeanR"]):
         super().__init__(config, metric_names)
-        self.error = True
+        self.error = False
 
     def compute_metrics(self, outputs, texts, video_ids, **kwargs):
         # return super().compute_metrics(outputs.T, texts, **kwargs)
