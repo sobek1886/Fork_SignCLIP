@@ -194,16 +194,8 @@ def _collect_tasks(splits_dir, video_dir, output_dir, dataset_name, overwrite):
                 if feat_id in seen:
                     continue
                 seen.add(feat_id)
-                # Try common video extensions
-                video_path = None
-                for candidate_name in (video_file, video_stem + ".mp4", video_stem + ".webm"):
-                    candidate = os.path.join(video_dir, candidate_name)
-                    if os.path.exists(candidate):
-                        video_path = candidate
-                        break
-                if video_path is None:
-                    video_path = os.path.join(video_dir, video_file)
-                tasks.append((feat_id, video_path, output_dir, overwrite))
+                # Build path directly; worker handles missing files
+                tasks.append((feat_id, os.path.join(video_dir, video_file), output_dir, overwrite))
     return tasks
 
 
