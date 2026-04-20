@@ -64,6 +64,31 @@ class DSAligner(Aligner):
         }
 
 
+class DSDistillAligner(DSAligner):
+    """DSAligner extended with optional teacher embedding loading for distillation.
+
+    When `vfeat_dir_teacher` is set in the dataset config, loads a pre-extracted
+    teacher embedding (shape: [D]) alongside each video and adds it to the output
+    dict as `teacher_embed`.  The DistillContraLoss uses this as a fixed cosine
+    target in addition to the standard InfoNCE loss.
+
+    Generate teacher embeddings with extract_teacher_embeddings.py before training.
+    """
+
+    def __init__(self, config):
+        super().__init__(config)
+        self.teacher_dir = getattr(config, "vfeat_dir_teacher", None)
+
+    def __call__(self, video_id, video_feature, text_feature, wps=0.7):
+        output = super().__call__(video_id, video_feature, text_feature, wps)
+        if self.teacher_dir is not None:
+            teacher_embed = np.load(
+                os.path.join(self.teacher_dir, video_id + ".npy")
+            )
+            output["teacher_embed"] = torch.FloatTensor(teacher_embed)
+        return output
+
+
 class NLGTextProcessor(TextProcessor):
     """
     Also return the original text as ref.

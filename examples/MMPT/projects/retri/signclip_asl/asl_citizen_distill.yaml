@@ -1,0 +1,74 @@
+# Knowledge distillation: Logos MViTv2-S teacher → MediaPipe pose student.
+#
+# Prerequisites (run in order):
+#   1. Extract pose files from raw videos:
+#        sbatch jobs/extract_asl_citizen_poses.job
+#      → saves asl_citizen_{video_stem}.pose to $HOME/ASL_Citizen/mediapipe_poses/
+#
+#   2. Extract teacher embeddings from trained Logos checkpoint:
+#        sbatch jobs/extract_teacher_embeddings.job
+#      → saves asl_citizen_{video_stem}.npy to $HOME/ASL_Citizen/logos_teacher_embeddings/
+#
+#   3. Submit this training job:
+#        sbatch jobs/asl_citizen_distill.job
+dataset:
+  max_video_len: 256
+  max_len: 64
+  meta_processor: SignCLIPVideoCSVMetaProcessor
+  video_processor: RWTHFSPoseProcessor
+  text_processor: TextProcessor
+  bert_name: bert-base-cased
+  splits_dir: /home/psobecki/ASL_Citizen/splits
+  train_path: placeholder
+  val_path: placeholder
+  test_path: placeholder
+  vfeat_dir: /home/psobecki/ASL_Citizen/mediapipe_poses
+  vfeat_dir_teacher: /home/psobecki/ASL_Citizen/logos_teacher_embeddings
+  aligner: DSDistillAligner
+  sp_universal_tagging: true
+  # Pose processor settings (matching SignCLIP reduced_face baseline)
+  pose_components: 'reduced_face'
+  normalize_hand: false
+  flip_pose: false
+  augment2d: false
+  augment_temporal: true
+  augment_temporal_chance: 0.5
+  gaussian_noise: false
+  preprocess: null
+  anonym_pose: false
+fairseq:
+  common:
+    fp16: true
+    tensorboard_logdir: run
+    log_interval: 20
+  dataset:
+    num_workers: 4
+    batch_size: 256
+  optimization:
+    lr:
+    - 5.0e-05
+    clip_norm: 2.0
+    optimizer: adam
+    adam_betas: (0.9, 0.98)
+    lr_scheduler: polynomial_decay
+    total_num_update: 1000000
+    warmup_updates: 500
+    weight_decay: 0.01
+    ddp_backend: no_c10d
+    max_epoch: 50
+  checkpoint:
+    no_epoch_checkpoints: true
+    save_dir: runs/retri_asl/asl_citizen_distill
+task_type: sweep_small
+model:
+  model_cls: MMFusionSeparate
+  mm_encoder_cls: null
+  video_encoder_cls: MMBertForEncoder
+  text_encoder_cls: BertModel
+  num_hidden_video_layers: 12
+  vfeat_dim: 609
+loss:
+  loss_cls: DistillContraLoss
+  distill_lambda: 0.5
+eval:
+  save_path: runs/retri_asl/asl_citizen_distill

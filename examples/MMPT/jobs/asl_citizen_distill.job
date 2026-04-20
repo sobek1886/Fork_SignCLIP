@@ -1,0 +1,19 @@
+#!/bin/bash
+
+#SBATCH --partition=gpu_a100
+#SBATCH --gpus=1
+#SBATCH --job-name=distill
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=5
+#SBATCH --time=24:00:00
+#SBATCH --output=jobs/output/slurm_distill_%A.txt
+
+module purge
+module load 2025
+
+cd $HOME/Fork_SignCLIP/examples/MMPT
+source .venv/bin/activate
+export PYTHONPATH=$HOME/Fork_SignCLIP:$PYTHONPATH
+export PATH="$HOME/Fork_SignCLIP/examples/MMPT/.venv/bin:$PATH"
+
+srun python locallaunch.py projects/retri/signclip_asl/asl_citizen_distill.yaml --jobtype local_single

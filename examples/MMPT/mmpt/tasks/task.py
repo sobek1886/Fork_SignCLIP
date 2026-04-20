@@ -133,7 +133,10 @@ class Task(object):
     def build_loss(self):
         if self.loss_fn is None and self.config.loss is not None:
             loss_cls = getattr(losses, self.config.loss.loss_cls)
-            self.loss_fn = loss_cls()
+            try:
+                self.loss_fn = loss_cls(self.config.loss)
+            except TypeError:
+                self.loss_fn = loss_cls()
         return self.loss_fn
 
     def flat_subsample(self, tensor):

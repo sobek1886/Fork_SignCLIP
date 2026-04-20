@@ -8,6 +8,7 @@ softmax-based NCE loss, used by this project.
 """
 
 import torch
+import torch.nn.functional as F
 
 from torch import nn
 
@@ -88,6 +89,30 @@ class MMContraLoss(Loss):
         loss_video = self.loss(logits_per_video, targets)
         loss_text = self.loss(logits_per_text, targets)
         return loss_video + loss_text
+
+
+class DistillContraLoss(MMContraLoss):
+    """Symmetric contrastive loss + cosine distillation from a frozen teacher.
+
+    Total loss = InfoNCE(student_video, text) + lambda * cosine_distill(student_video, teacher)
+
+    teacher_embed (shape: [batch, D]) should be pre-extracted embeddings from a
+    trained teacher model, produced by extract_teacher_embeddings.py and passed
+    through the sample dict by DSDistillAligner.
+    """
+
+    def __init__(self, config=None):
+        super().__init__()
+        self.distill_lambda = getattr(config, "distill_lambda", 0.5) if config is not None else 0.5
+
+    def __call__(self, pooled_video, pooled_text, teacher_embed=None, **kwargs):
+        contra_loss = super().__call__(pooled_video, pooled_text)
+        if teacher_embed is not None and self.distill_lambda > 0.0:
+            student = F.normalize(pooled_video, dim=-1)
+            teacher = F.normalize(teacher_embed.to(dtype=pooled_video.dtype, device=pooled_video.device), dim=-1)
+            distill_loss = (1.0 - (student * teacher).sum(dim=-1)).mean()
+            return contra_loss + self.distill_lambda * distill_loss
+        return contra_loss
 
 
 class MTM(Loss):
