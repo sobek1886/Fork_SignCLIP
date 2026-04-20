@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --partition=cpu
+#SBATCH --partition=thin
 #SBATCH --job-name=asl_poses
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16
