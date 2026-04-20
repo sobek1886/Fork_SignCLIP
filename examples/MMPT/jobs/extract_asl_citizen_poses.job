@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --partition=thin
+#SBATCH --partition=rome
 #SBATCH --job-name=asl_poses
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16
@@ -18,5 +18,6 @@ export PATH="$HOME/Fork_SignCLIP/examples/MMPT/.venv/bin:$PATH"
 srun python extract_asl_citizen_poses.py \
     --video_dir  /scratch-shared/psobecki/ASL_Citizen/videos \
     --splits_dir $HOME/ASL_Citizen/splits \
-    --output_dir $HOME/ASL_Citizen/mediapipe_poses \
+    --output_dir $HOME/ASL_Citizen/mediapipe_features \
+    --model_path $HOME/Fork_SignCLIP/examples/MMPT/holistic_landmarker.task \
     --workers    14
