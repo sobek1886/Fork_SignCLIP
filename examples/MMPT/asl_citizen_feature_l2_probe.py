@@ -95,7 +95,11 @@ def load_features(
         if not npy_path.exists():
             missing += 1
             continue
-        feat = np.load(npy_path).astype(np.float32)   # (T, D) or (D,)
+        try:
+            feat = np.load(npy_path).astype(np.float32)   # (T, D) or (D,)
+        except Exception:
+            missing += 1
+            continue
         if feat.ndim == 2:
             if feat.shape[0] == 0:
                 missing += 1
