@@ -259,6 +259,7 @@ def print_results(result: dict, feature_name: str, feat_dim: int):
 # ---------------------------------------------------------------------------
 
 def main():
+    global DATASET_NAME
     parser = argparse.ArgumentParser(
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -299,7 +300,6 @@ def main():
     if not args.splits_dir.exists():
         raise FileNotFoundError(f"Splits directory not found: {args.splits_dir}")
 
-    global DATASET_NAME
     DATASET_NAME = args.dataset_name
 
     print(f"Feature dir : {args.feature_dir}")
