@@ -97,6 +97,9 @@ def load_features(
             continue
         feat = np.load(npy_path).astype(np.float32)   # (T, D) or (D,)
         if feat.ndim == 2:
+            if feat.shape[0] == 0:
+                missing += 1
+                continue
             feat = feat.mean(axis=0)                   # → (D,)
         elif feat.ndim != 1:
             missing += 1
