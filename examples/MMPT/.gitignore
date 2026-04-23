@@ -140,3 +140,7 @@ demos
 
 slurm*.out
 examples/MMPT/asl_finetune_checkpoint_best.pt
+
+# Large binary data files — store on scratch, not in git
+*.pkl
+*.pose
