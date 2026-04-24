@@ -297,8 +297,11 @@ def main():
 
     # Resolve default feature_dir based on feature_name
     if args.feature_dir is None:
-        if "logos" in args.feature_name.lower():
+        name = args.feature_name.lower()
+        if "logos" in name:
             args.feature_dir = Path(DEFAULT_LOGOS_DIR)
+        elif "mediapipe" in name or "pose" in name:
+            args.feature_dir = Path("/home/psobecki/ASL_Citizen/mediapipe_features")
         else:
             args.feature_dir = Path(DEFAULT_I3D_DIR)
 
