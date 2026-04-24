@@ -2,16 +2,14 @@ dataset:
   max_video_len: 256
   max_len: 64
   split: train
-  train_for_test: true
-  meta_processor: SignCLIPMetaProcessor
-  video_processor: SignCLIPPoseProcessor
+  meta_processor: SignCLIPVideoCSVMetaProcessor
+  video_processor: RWTHFSVideoProcessor
   text_processor: TextProcessor
   bert_name: bert-base-cased
-  data_dir: /scratch-shared/psobecki/tensorflow_datasets
-  test_datasets: [['asl_citizen', '1.0.0', '1.0.0']]
-  test_path: data/<dataset>/test.txt
+  splits_dir: /home/psobecki/ASL_Citizen/splits
+  vfeat_dir: /home/psobecki/ASL_Citizen/mediapipe_features
+  vfeat_custom: 1
   aligner: DSAligner
-  pose_components: 'reduced_face'
   sp_universal_tagging: true
 task_type: local_predict
 fairseq:
