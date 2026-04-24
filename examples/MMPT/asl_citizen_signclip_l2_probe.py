@@ -145,19 +145,39 @@ def extract_embeddings(
     meta_data: list,
     device: torch.device,
 ) -> dict[str, np.ndarray]:
-    """Run model forward pass and collect feat_id → pooled_video embedding."""
+    """Run model forward pass and collect feat_id → pooled_video embedding.
+
+    Video IDs are read from the batch when available (works for all meta
+    processors including SignCLIPMetaProcessor), falling back to index-based
+    lookup from meta_data otherwise.
+    """
     model.eval()
     model.to(device)
 
-    feat_ids = [d["id"] for d in meta_data]
+    # Fallback index list — works for SignCLIPVideoCSVMetaProcessor ("id" key)
+    # and SignCLIPMetaProcessor ("pose" key, strip extension to get video_id)
+    def _meta_id(d):
+        if "id" in d:
+            return d["id"]
+        if "pose" in d:
+            return d["pose"].replace(".pose", "")
+        return None
+
+    fallback_ids = [_meta_id(d) for d in meta_data]
     idx = 0
     embeddings = {}
 
     with torch.no_grad():
         for batch in tqdm(dataloader, desc="Extracting embeddings"):
-            if not isinstance(batch, dict):
+            # Extract video_ids before converting batch to tensors
+            video_ids = None
+            if isinstance(batch, (list, tuple)) and len(batch) >= 5:
+                video_ids = batch[4]
                 batch = {"caps": batch[0], "cmasks": batch[1],
                          "vfeats": batch[2], "vmasks": batch[3]}
+            elif isinstance(batch, dict) and "video_id" in batch:
+                video_ids = batch.pop("video_id")
+
             batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v
                      for k, v in batch.items()}
 
@@ -165,9 +185,16 @@ def extract_embeddings(
             pooled = outputs["pooled_video"].cpu().numpy()  # (B, D)
 
             for j in range(pooled.shape[0]):
-                if idx < len(feat_ids):
-                    embeddings[feat_ids[idx]] = pooled[j]
+                if video_ids is not None:
+                    vid = video_ids[j]
+                    vid = vid.item() if hasattr(vid, "item") else str(vid)
+                elif idx < len(fallback_ids):
+                    vid = fallback_ids[idx]
+                else:
                     idx += 1
+                    continue
+                embeddings[vid] = pooled[j]
+                idx += 1
 
     print(f"Extracted {len(embeddings)} embeddings")
     return embeddings

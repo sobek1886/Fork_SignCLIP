@@ -1,0 +1,33 @@
+dataset:
+  max_video_len: 256
+  max_len: 64
+  split: train
+  train_for_test: true
+  meta_processor: SignCLIPMetaProcessor
+  video_processor: SignCLIPPoseProcessor
+  text_processor: TextProcessor
+  bert_name: bert-base-cased
+  data_dir: /scratch-shared/psobecki/tensorflow_datasets
+  test_datasets: [['asl_citizen', '1.0.0', '1.0.0']]
+  test_path: data/<dataset>/test.txt
+  aligner: DSAligner
+  pose_components: 'reduced_face'
+  sp_universal_tagging: true
+task_type: local_predict
+fairseq:
+  dataset:
+    batch_size: 512
+    num_workers: 4
+  common_eval:
+    path: runs/retri_asl/asl_citizen_finetune/checkpoint_best.pt
+model:
+  model_cls: MMFusionSeparate
+  mm_encoder_cls: null
+  video_encoder_cls: MMBertForEncoder
+  text_encoder_cls: BertModel
+  num_hidden_video_layers: 12
+  vfeat_dim: 609
+eval:
+  save_path: runs/retri_asl/asl_citizen_finetune/eval
+metric: RWTHFSMetric
+predictor: RetrievalPredictor
