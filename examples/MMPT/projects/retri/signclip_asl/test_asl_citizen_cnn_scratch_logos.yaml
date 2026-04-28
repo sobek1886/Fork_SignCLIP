@@ -2,6 +2,7 @@ dataset:
   max_video_len: 32
   max_len: 64
   split: test
+  train_for_test: false
   meta_processor: SignCLIPVideoCSVMetaProcessor
   video_processor: RWTHFSVideoProcessor
   text_processor: TextProcessor
