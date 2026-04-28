@@ -9,6 +9,7 @@ dataset:
   splits_dir: /home/psobecki/ASL_Citizen/splits
   vfeat_dir: /home/psobecki/ASL_Citizen/logos_features
   vfeat_custom: 1
+  dataset_name: asl_citizen
   aligner: DSAligner
   sp_universal_tagging: true
   test_separately: false
