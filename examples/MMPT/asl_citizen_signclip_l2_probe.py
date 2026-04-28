@@ -81,47 +81,48 @@ def load_signer_map(splits_dir: Path) -> dict[str, tuple[str, str]]:
 # Model + dataloader setup
 # ---------------------------------------------------------------------------
 
+def disable_struct_recursive(cfg):
+    """Recursively disable OmegaConf struct mode on all nested configs."""
+    from omegaconf import OmegaConf, DictConfig, ListConfig
+    if isinstance(cfg, DictConfig):
+        OmegaConf.set_struct(cfg, False)
+        for key in cfg:
+            try:
+                disable_struct_recursive(cfg[key])
+            except Exception:
+                pass
+    elif isinstance(cfg, ListConfig):
+        for item in cfg:
+            try:
+                disable_struct_recursive(item)
+            except Exception:
+                pass
+
+
 def build_dataloader(config, split: str, batch_size: int) -> DataLoader:
     """Build a dataloader for a given split, overriding config.dataset.split."""
-    from omegaconf import OmegaConf
-    # Override split at dataset level
-    with open_dict_safe(config.dataset) as d:
-        d.split = split
+    config.dataset.split = split
 
     meta_processor_cls  = getattr(processors, config.dataset.meta_processor)
     video_processor_cls = getattr(processors, config.dataset.video_processor)
     text_processor_cls  = getattr(processors, config.dataset.text_processor)
     aligner_cls         = getattr(processors, config.dataset.aligner)
 
-    dataset = MMDataset(
-        meta_processor_cls(config.dataset),
-        video_processor_cls(config.dataset),
-        text_processor_cls(config.dataset),
-        aligner_cls(config.dataset),
-    )
-    return DataLoader(
+    meta_processor  = meta_processor_cls(config.dataset)
+    video_processor = video_processor_cls(config.dataset)
+    text_processor  = text_processor_cls(config.dataset)
+    aligner         = aligner_cls(config.dataset)
+
+    dataset = MMDataset(meta_processor, video_processor, text_processor, aligner)
+
+    dataloader = DataLoader(
         dataset,
         batch_size=batch_size,
         shuffle=False,
         num_workers=4,
         collate_fn=dataset.collater,
-    ), dataset.meta_processor.data   # also return data list for feat_id mapping
-
-
-def open_dict_safe(cfg):
-    """Context manager that makes an OmegaConf DictConfig temporarily writable."""
-    from omegaconf import OmegaConf
-    import contextlib
-
-    @contextlib.contextmanager
-    def _cm(c):
-        OmegaConf.set_struct(c, False)
-        try:
-            yield c
-        finally:
-            OmegaConf.set_struct(c, True)
-
-    return _cm(cfg)
+    )
+    return dataloader, meta_processor.data
 
 
 def load_model(config) -> torch.nn.Module:
@@ -356,9 +357,11 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")
 
-    # Load config
+    # Load config and disable struct mode so missing keys return None
     from argparse import Namespace
+    from omegaconf import OmegaConf
     config = load_config(Namespace(taskconfig=str(args.config)))
+    disable_struct_recursive(config)
 
     # Cache path
     cache_path = None
@@ -369,9 +372,9 @@ def main():
     if cache_path and cache_path.exists():
         print(f"Loading cached embeddings from {cache_path}")
         data = np.load(cache_path, allow_pickle=True)
-        feat_ids   = list(data["feat_ids"])
+        feat_ids     = [str(x) for x in data["feat_ids"]]
         embed_matrix = data["embeddings"]
-        embeddings = {fid: embed_matrix[i] for i, fid in enumerate(feat_ids)}
+        embeddings   = {fid: embed_matrix[i] for i, fid in enumerate(feat_ids)}
     else:
         # Build dataloader
         print(f"Building dataloader for split={args.split} ...")
