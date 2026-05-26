@@ -115,6 +115,63 @@ class DistillContraLoss(MMContraLoss):
         return contra_loss
 
 
+class SupConLoss(Loss):
+    """Supervised Contrastive loss (Khosla et al. 2020).
+
+    Pulls all K views of the same sign together in the shared embedding space.
+    Normalises features internally; expects pooled_video of shape (N, D) where
+    N = B * K (B signs, K views each).
+
+    Args (from **kwargs / sample dict):
+        pooled_video:   (N, D) float tensor — video embeddings (e.g. from
+                        MMFusionSeparate.forward_video).
+        supcon_labels:  (N,) long tensor — integer sign index, repeated K times
+                        per sign (e.g. [0,0,1,1,...,B-1,B-1] for K=2).
+
+    Returns:
+        Scalar loss tensor.
+    """
+
+    def __init__(self, config=None):
+        self.temperature = (
+            getattr(config, "supcon_temperature", 0.07)
+            if config is not None else 0.07
+        )
+
+    def __call__(self, pooled_video, supcon_labels=None, **kwargs):
+        if supcon_labels is None:
+            return torch.zeros(1, device=pooled_video.device).squeeze()
+
+        device = pooled_video.device
+        features = F.normalize(pooled_video, dim=-1)  # (N, D)
+        N = features.shape[0]
+
+        # Pairwise cosine similarities scaled by temperature: (N, N)
+        sim = torch.mm(features, features.t()) / self.temperature
+
+        # Positive mask: same label AND not the same sample
+        labels = supcon_labels.view(-1, 1)                              # (N, 1)
+        pos_mask = (labels == labels.t()) & \
+                   ~torch.eye(N, dtype=torch.bool, device=device)       # (N, N)
+
+        # Exclude self-similarity from the log-sum-exp denominator
+        sim_no_self = sim.masked_fill(
+            torch.eye(N, dtype=torch.bool, device=device), float('-inf')
+        )
+        log_denom = torch.logsumexp(sim_no_self, dim=1, keepdim=True)  # (N, 1)
+        log_probs = sim - log_denom                                     # (N, N)
+
+        # Average log-probability over positive pairs, then average over anchors
+        n_pos = pos_mask.float().sum(dim=1)                             # (N,)
+        valid = n_pos > 0
+        if not valid.any():
+            return torch.zeros(1, device=device, requires_grad=True).squeeze()
+
+        pos_log_probs = (log_probs * pos_mask.float()).sum(dim=1)       # (N,)
+        loss = -(pos_log_probs[valid] / n_pos[valid]).mean()
+        return loss
+
+
 class MTM(Loss):
     """Combination of MFM and MLM."""
 

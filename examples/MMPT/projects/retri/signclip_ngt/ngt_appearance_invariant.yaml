@@ -1,0 +1,70 @@
+# Appearance-invariant contrastive pre-training on paired NGT data.
+#
+# Phase A — Joint training (L_clip + L_inv simultaneously).
+#   - Video side: Logos MViTv2-S features (768-dim .npy, already extracted)
+#   - Pairs: Bushuis real camera  +  NGT_Aug Unreal Engine palmer (frontal cam)
+#   - L_clip: MMContraLoss (symmetric InfoNCE, requires gloss/text labels)
+#   - L_inv:  SupConLoss (Supervised Contrastive, appearance-invariance objective)
+#
+# For Phase B (NGT-only pre-training, no text labels), switch:
+#   loss_cls:     SupConLoss
+#   (remove inv_loss_cls entirely)
+# Then fine-tune on ASL Citizen using the standard asl_citizen_cnn_scratch_logos.yaml.
+#
+# Prerequisite: run make_ngt_pair_manifest.py to produce ngt_pair_manifest.json.
+dataset:
+  max_video_len: 32
+  max_len: 64
+  meta_processor: NGTPairMetaProcessor
+  video_processor: NGTPairVideoProcessor
+  text_processor: TextProcessor
+  bert_name: bert-base-cased
+  # pair_manifest is consumed by NGTPairMetaProcessor and NGTPairVideoProcessor
+  pair_manifest: /home/psobecki/ngt_pair_manifest.json
+  aligner: NGTPairAligner
+  # vfeat_dim must match Logos output (768)
+  vfeat_dim: 768
+  # Temporal augmentation is handled inside NGTPairAligner via DSAligner
+  augment_temporal: true
+fairseq:
+  common:
+    fp16: true
+    tensorboard_logdir: run
+    log_interval: 20
+  dataset:
+    num_workers: 4
+    # Effective batch over both views: 2 * batch_size signs are forwarded per step.
+    # Keep lower than ASL Citizen runs to stay within A100 memory (2*B*T*768 tensors).
+    batch_size: 64
+  optimization:
+    lr:
+    - 5.0e-05
+    clip_norm: 2.0
+    optimizer: adam
+    adam_betas: (0.9, 0.98)
+    lr_scheduler: polynomial_decay
+    total_num_update: 500000
+    warmup_updates: 500
+    weight_decay: 0.01
+    ddp_backend: no_c10d
+    max_epoch: 50
+  checkpoint:
+    no_epoch_checkpoints: true
+    save_dir: runs/retri_ngt/ngt_appearance_invariant
+task_type: sweep_small
+task: NGTPairTask
+model:
+  model_cls: MMFusionSeparate
+  mm_encoder_cls: null
+  video_encoder_cls: MMBertForEncoder
+  text_encoder_cls: BertModel
+  num_hidden_video_layers: 12
+  vfeat_dim: 768
+loss:
+  # Phase A: joint CLIP + SupCon
+  loss_cls: MMContraLoss
+  inv_loss_cls: SupConLoss
+  lambda_inv: 0.1          # weight on the appearance-invariance term
+  supcon_temperature: 0.07
+eval:
+  save_path: runs/retri_ngt/ngt_appearance_invariant

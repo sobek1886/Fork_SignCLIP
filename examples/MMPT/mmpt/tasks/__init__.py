@@ -20,3 +20,5 @@ try:
     from .expretritask import *
 except ImportError:
     pass
+
+from .ngt_pair_task import *

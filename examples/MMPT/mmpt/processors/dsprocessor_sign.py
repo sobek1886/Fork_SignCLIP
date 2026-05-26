@@ -18,6 +18,7 @@ from .processor import (
     VideoProcessor,
     TextProcessor,
 )
+from .dsprocessor import DSAligner
 
 # -------------------- SignCLIP common -----------------------
 
@@ -960,3 +961,100 @@ class SignCLIPVideoCSVMetaProcessor(MetaProcessor):
     def __getitem__(self, idx):
         datum = self.data[idx]
         return datum['id'], datum['text']
+
+
+# -------------------- NGT appearance-invariant contrastive data -----------------------
+# Paired NGT data: each sign has a real Logos .npy (Bushuis) and an Unreal Engine
+# Logos .npy (NGT_Aug palmer), linked by a JSON manifest produced by
+# make_ngt_pair_manifest.py.  No gloss labels required.
+#
+# Config fields required:
+#   pair_manifest:  /path/to/ngt_pair_manifest.json
+#   vfeat_dir:      ignored (paths are absolute in the manifest)
+#
+# Usage in a .yaml config:
+#   meta_processor:   NGTPairMetaProcessor
+#   video_processor:  NGTPairVideoProcessor
+#   aligner:          NGTPairAligner
+
+
+class NGTPairMetaProcessor(MetaProcessor):
+    """Yields (sign_id, dummy_text) for each sign in the NGT pair manifest.
+
+    The dummy text is an empty string; the aligner will build a minimal
+    [CLS][SEP] token sequence so the model's text side receives valid input
+    even though no gloss label is available.
+    """
+
+    def __init__(self, config):
+        super().__init__(config)
+        with open(config.pair_manifest) as f:
+            self.manifest = json.load(f)
+        self.sign_ids = sorted(self.manifest.keys())
+        if getattr(config, 'split', 'train') == 'train':
+            random.shuffle(self.sign_ids)
+        print(f'NGTPairMetaProcessor: {len(self.sign_ids)} paired signs loaded.')
+
+    def __len__(self):
+        return len(self.sign_ids)
+
+    def __getitem__(self, idx):
+        return self.sign_ids[idx], ''  # (sign_id, dummy_text)
+
+
+class NGTPairVideoProcessor(VideoProcessor):
+    """Loads both the real and unreal Logos .npy files for a given sign_id.
+
+    Returns a 2-tuple (real_feat, unreal_feat) where each element is a
+    numpy array of shape (N_clips, 768).  The NGTPairAligner handles padding.
+    """
+
+    def __init__(self, config):
+        super().__init__(config)
+        with open(config.pair_manifest) as f:
+            self.manifest = json.load(f)
+
+    def __call__(self, sign_id):
+        paths = self.manifest[sign_id]
+        real_feat = np.load(paths['real'])    # (N_real, 768)
+        unreal_feat = np.load(paths['unreal'])  # (N_unreal, 768)
+        return real_feat, unreal_feat
+
+
+class NGTPairAligner(DSAligner):
+    """Aligner for paired NGT data.
+
+    Accepts a 2-tuple of video features (real, unreal) and pads each
+    independently to max_video_len, producing:
+        vfeats:  (2, max_video_len, 768)
+        vmasks:  (2, max_video_len)
+
+    These are collated by the default collator to (B, 2, max_video_len, 768)
+    and (B, 2, max_video_len) respectively.  NGTPairTask handles the reshape
+    before the model forward pass.
+    """
+
+    def __call__(self, video_id, video_feature, text_feature, wps=0.7):
+        real_feat, unreal_feat = video_feature  # each (N_clips, 768)
+
+        vfeats1, vmasks1 = self._build_video_seq(real_feat)    # (T, 768), (T,)
+        vfeats2, vmasks2 = self._build_video_seq(unreal_feat)  # (T, 768), (T,)
+
+        vfeats = torch.stack([vfeats1, vfeats2])   # (2, T, 768)
+        vmasks = torch.stack([vmasks1, vmasks2])   # (2, T)
+
+        # Build a minimal dummy text (empty string → [CLS][SEP] tokens)
+        text_feature_dict = {
+            "cap": [text_feature],
+            "start": [0],
+            "end": [1],
+        }
+        caps, cmasks = self._build_text_seq(text_feature_dict, [0])
+
+        return {
+            "caps": caps,
+            "cmasks": cmasks,
+            "vfeats": vfeats,
+            "vmasks": vmasks,
+            "video_id": video_id,
+        }

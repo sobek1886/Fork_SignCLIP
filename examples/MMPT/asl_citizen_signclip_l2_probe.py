@@ -126,13 +126,11 @@ def build_dataloader(config, split: str, batch_size: int) -> DataLoader:
 
 
 def load_model(config) -> torch.nn.Module:
-    mmtask = Task.config_task(config)
-    mmtask.build_model(config)
     checkpoint_path = config.fairseq.common_eval.path
     print(f"Loading checkpoint: {checkpoint_path}")
-    state = torch.load(checkpoint_path, map_location="cpu")
-    model_state = state.get("model", state)
-    mmtask.model.load_state_dict(model_state, strict=False)
+    mmtask = Task.config_task(config)
+    mmtask.build_model()
+    mmtask.load_checkpoint(checkpoint_path)
     return mmtask.model
 
 
