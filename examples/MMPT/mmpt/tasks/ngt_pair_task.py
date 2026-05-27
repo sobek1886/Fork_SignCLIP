@@ -26,6 +26,8 @@ import torch
 
 from . import tasks
 from .. import losses
+from .. import processors
+from ..datasets import MMDataset
 from .task import Task
 
 
@@ -40,6 +42,30 @@ class NGTPairTask(Task):
     - Falls back to the standard Task.__call__ for single-view batches so the
       same task class can be reused in a later CLIP fine-tuning stage.
     """
+
+    def build_dataset(self):
+        """Build train_data unconditionally from the pair_manifest.
+
+        The base Task.build_dataset() gates on train_path, which NGT configs
+        don't set (they use pair_manifest instead).  There is no val/test split
+        for NGT pretraining — all signs are used for training.
+        """
+        meta_processor_cls = getattr(processors, self.config.dataset.meta_processor)
+        video_processor_cls = getattr(processors, self.config.dataset.video_processor)
+        text_processor_cls = getattr(processors, self.config.dataset.text_processor)
+        aligner_cls = getattr(processors, self.config.dataset.aligner)
+
+        self.config.dataset.split = "train"
+        meta_processor = meta_processor_cls(self.config.dataset)
+        video_processor = video_processor_cls(self.config.dataset)
+        text_processor = text_processor_cls(self.config.dataset)
+        aligner = aligner_cls(self.config.dataset)
+        self.train_data = MMDataset(
+            meta_processor, video_processor, text_processor, aligner
+        )
+        print("train_len", len(self.train_data))
+        output = self.train_data[0]
+        self.train_data.print_example(output)
 
     def build_loss(self):
         """Build the primary loss (SupConLoss for NGT-only; MMContraLoss for joint).
