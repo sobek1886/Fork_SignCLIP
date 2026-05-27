@@ -24,6 +24,7 @@ fairseq:
     num_workers: 4
     # 9*21=189 encoder passes per step ≈ same memory budget as baseline 3*64=192
     batch_size: 21
+    disable_validation: true
   optimization:
     lr: [5.0e-05]
     clip_norm: 2.0

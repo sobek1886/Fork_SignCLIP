@@ -19,6 +19,7 @@ fairseq:
   dataset:
     num_workers: 4
     batch_size: 64          # 3*64=192 encoder passes per step
+    disable_validation: true
   optimization:
     lr: [5.0e-05]
     clip_norm: 2.0
