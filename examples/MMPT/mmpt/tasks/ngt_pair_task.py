@@ -60,7 +60,7 @@ class NGTPairTask(Task):
 
         self.lambda_inv = getattr(self.config.loss, 'lambda_inv', 1.0)
 
-        if hasattr(self.config.loss, 'inv_loss_cls'):
+        if hasattr(self.config.loss, 'inv_loss_cls') and self.config.loss.inv_loss_cls is not None:
             # Joint mode: a separate inv_loss_cls is specified
             inv_loss_cls = getattr(losses, self.config.loss.inv_loss_cls)
             try:
