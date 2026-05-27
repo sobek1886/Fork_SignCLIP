@@ -1,7 +1,5 @@
-# Intervention: 3 piotrAnims + 3 palmer + 3 digits views per sign, SupConLoss K=9.
-# Teaches multi-view consistency across real mocap signers + two synthetic characters.
-#
-# Prerequisite: run make_ngt_pair_manifest.py to produce ngt_pair_manifest.json.
+# Baseline: 3 piotrAnims camera views per sign, SupConLoss K=3.
+# Teaches intra-domain multi-view consistency (no cross-domain pairing).
 dataset:
   max_video_len: 32
   max_len: 64
@@ -9,11 +7,9 @@ dataset:
   video_processor: NGTPairVideoProcessor
   text_processor: TextProcessor
   bert_name: bert-base-cased
-  # pair_manifest is consumed by NGTPairMetaProcessor and NGTPairVideoProcessor
   pair_manifest: /home/psobecki/ngt_pair_manifest.json
-  load_unreal: true         # load 'real' + 'unreal' → K=9
+  load_unreal: false        # load only 'real' (piotrAnims) views → K=3
   aligner: NGTPairAligner
-  # vfeat_dim must match Logos output (768)
   vfeat_dim: 768
 fairseq:
   common:
@@ -22,8 +18,7 @@ fairseq:
     log_interval: 20
   dataset:
     num_workers: 4
-    # 9*21=189 encoder passes per step ≈ same memory budget as baseline 3*64=192
-    batch_size: 21
+    batch_size: 64          # 3*64=192 encoder passes per step
   optimization:
     lr: [5.0e-05]
     clip_norm: 2.0
@@ -37,7 +32,7 @@ fairseq:
     max_epoch: 50
   checkpoint:
     no_epoch_checkpoints: true
-    save_dir: runs/retri_ngt/ngt_appearance_invariant
+    save_dir: runs/retri_ngt/ngt_baseline
 task_type: sweep_small
 task: NGTPairTask
 mlflow_experiment: signclip-ngt
@@ -52,4 +47,4 @@ loss:
   loss_cls: SupConLoss
   supcon_temperature: 0.07
 eval:
-  save_path: runs/retri_ngt/ngt_appearance_invariant
+  save_path: runs/retri_ngt/ngt_baseline

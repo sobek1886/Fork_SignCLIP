@@ -172,6 +172,23 @@ class SupConLoss(Loss):
         return loss
 
 
+class VidNCELoss(Loss):
+    """Video-only InfoNCE. Treats each item in the batch as its own class.
+    Pushes sign embeddings apart without requiring text labels or positive pairs.
+    Used as the appearance-invariance baseline (single-view Bushuis training).
+    """
+
+    def __init__(self, config=None):
+        self.loss = nn.CrossEntropyLoss()
+
+    def __call__(self, pooled_video, **kwargs):
+        logits = pooled_video @ pooled_video.t()   # (B, B)
+        targets = torch.arange(
+            logits.size(0), dtype=torch.long, device=logits.device
+        )
+        return self.loss(logits, targets)
+
+
 class MTM(Loss):
     """Combination of MFM and MLM."""
 

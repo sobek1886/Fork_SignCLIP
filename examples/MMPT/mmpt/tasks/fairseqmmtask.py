@@ -59,7 +59,8 @@ class FairseqMMTask(LegacyFairseqTask):
         if _MLFLOW and local_rank == 0:
             try:
                 _mlflow.set_tracking_uri("https://mlflow.ai.mytkhgroup.com/")
-                _mlflow.set_experiment("signclip-cnn")
+                experiment = str(getattr(config, "mlflow_experiment", "signclip-cnn"))
+                _mlflow.set_experiment(experiment)
                 run_name = os.path.splitext(os.path.basename(args.taskconfig))[0]
                 try:
                     _mlflow.enable_system_metrics_logging()
@@ -75,6 +76,8 @@ class FairseqMMTask(LegacyFairseqTask):
                     "num_hidden_video_layers": int(config.model.num_hidden_video_layers),
                     "meta_processor": str(config.dataset.meta_processor),
                     "restore_file": str(getattr(config.fairseq.checkpoint, "restore_file", "none")),
+                    "loss_cls": str(getattr(config.loss, "loss_cls", "none")),
+                    "load_unreal": str(getattr(config.dataset, "load_unreal", "none")),
                 })
                 _mlflow.set_tag("slurm_job_id", os.environ.get("SLURM_JOB_ID", "unknown"))
                 _mlflow.set_tag("slurm_node", os.environ.get("SLURMD_NODENAME", "unknown"))

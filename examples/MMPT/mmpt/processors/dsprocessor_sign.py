@@ -1003,10 +1003,32 @@ class NGTPairMetaProcessor(MetaProcessor):
 
 
 class NGTPairVideoProcessor(VideoProcessor):
-    """Loads both the real and unreal Logos .npy files for a given sign_id.
+    """Loads N view features for a given sign_id from the pair manifest.
 
-    Returns a 2-tuple (real_feat, unreal_feat) where each element is a
-    numpy array of shape (N_clips, 768).  The NGTPairAligner handles padding.
+    Returns a tuple of N numpy arrays, each of shape (N_clips, 768).
+    N = len(real) when load_unreal=False (K=3 baseline),
+    N = len(real) + len(unreal) when load_unreal=True (K=9 intervention).
+    The NGTPairAligner handles per-view padding.
+    """
+
+    def __init__(self, config):
+        super().__init__(config)
+        with open(config.pair_manifest) as f:
+            self.manifest = json.load(f)
+        self.load_unreal = getattr(config, 'load_unreal', True)
+
+    def __call__(self, sign_id):
+        paths = self.manifest[sign_id]
+        feats = [np.load(p) for p in paths['real']]
+        if self.load_unreal:
+            feats += [np.load(p) for p in paths.get('unreal', [])]
+        return tuple(feats)   # length K=3 (baseline) or K=9 (intervention)
+
+
+class NGTSingleVideoProcessor(VideoProcessor):
+    """Loads the real (Bushuis) feature for a sign from the pair manifest.
+    Returns a single numpy array (N_clips, 768) — no pairing.
+    Used with the baseline config (NGTSingleVideoProcessor + DSAligner).
     """
 
     def __init__(self, config):
@@ -1014,41 +1036,33 @@ class NGTPairVideoProcessor(VideoProcessor):
         with open(config.pair_manifest) as f:
             self.manifest = json.load(f)
 
-    def __call__(self, sign_id):
-        paths = self.manifest[sign_id]
-        real_feat = np.load(paths['real'])    # (N_real, 768)
-        unreal_feat = np.load(paths['unreal'])  # (N_unreal, 768)
-        return real_feat, unreal_feat
+    def __call__(self, video_id, *args, **kwargs):
+        path = self.manifest[video_id]['real']
+        return np.load(path)
 
 
 class NGTPairAligner(DSAligner):
     """Aligner for paired NGT data.
 
-    Accepts a 2-tuple of video features (real, unreal) and pads each
-    independently to max_video_len, producing:
-        vfeats:  (2, max_video_len, 768)
-        vmasks:  (2, max_video_len)
+    Accepts a tuple of N video features and pads each independently to
+    max_video_len, producing:
+        vfeats:  (N, max_video_len, 768)
+        vmasks:  (N, max_video_len)
 
-    These are collated by the default collator to (B, 2, max_video_len, 768)
-    and (B, 2, max_video_len) respectively.  NGTPairTask handles the reshape
-    before the model forward pass.
+    N = 3 for the baseline (load_unreal=False, piotrAnims views only) or
+    N = 9 for the intervention (load_unreal=True, 3 real + 6 unreal).
+    These are collated to (B, N, max_video_len, 768) and (B, N, max_video_len).
+    NGTPairTask handles the reshape before the model forward pass.
     """
 
     def __call__(self, video_id, video_feature, text_feature, wps=0.7):
-        real_feat, unreal_feat = video_feature  # each (N_clips, 768)
-
-        vfeats1, vmasks1 = self._build_video_seq(real_feat)    # (T, 768), (T,)
-        vfeats2, vmasks2 = self._build_video_seq(unreal_feat)  # (T, 768), (T,)
-
-        vfeats = torch.stack([vfeats1, vfeats2])   # (2, T, 768)
-        vmasks = torch.stack([vmasks1, vmasks2])   # (2, T)
+        # video_feature is a tuple of N numpy arrays, each (N_clips, 768)
+        paired = [self._build_video_seq(f) for f in video_feature]
+        vfeats = torch.stack([pf[0] for pf in paired])   # (N, T, 768)
+        vmasks = torch.stack([pf[1] for pf in paired])   # (N, T)
 
         # Build a minimal dummy text (empty string → [CLS][SEP] tokens)
-        text_feature_dict = {
-            "cap": [text_feature],
-            "start": [0],
-            "end": [1],
-        }
+        text_feature_dict = {"cap": [text_feature], "start": [0], "end": [1]}
         caps, cmasks = self._build_text_seq(text_feature_dict, [0])
 
         return {
