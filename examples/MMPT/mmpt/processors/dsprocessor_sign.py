@@ -1030,13 +1030,9 @@ class NGTPairVideoProcessor(VideoProcessor):
         super().__init__(config)
         with open(config.pair_manifest) as f:
             self.manifest = json.load(f)
-        from omegaconf import OmegaConf
-        self.load_real = OmegaConf.select(config, 'load_real', default=True)
-        self.load_unreal = OmegaConf.select(config, 'load_unreal', default=True)
-        self.unreal_character = OmegaConf.select(config, 'unreal_character', default=None)
-        print(f"[NGTPairVideoProcessor] load_real={self.load_real}, "
-              f"load_unreal={self.load_unreal}, "
-              f"unreal_character={self.unreal_character}")
+        self.load_real = getattr(config, 'load_real', True)
+        self.load_unreal = getattr(config, 'load_unreal', True)
+        self.unreal_character = getattr(config, 'unreal_character', None)
 
     def __call__(self, sign_id):
         paths = self.manifest[sign_id]
