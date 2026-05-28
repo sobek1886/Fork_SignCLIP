@@ -1,0 +1,60 @@
+# Synthetic baseline: K=3 views from a single Unreal Engine character (palmer),
+# no real signer data.  Direct counterpart to ngt_baseline.yaml (K=3 real).
+#
+# Unreal views in the manifest are ordered:
+#   [palmer_cam2, palmer_cam3, palmer_cam4, digits_cam2, digits_cam3, digits_cam4]
+# unreal_character: 0 selects palmer's 3 views (cam2, cam3, cam4).
+#
+# Purpose: does training on 3 synthetic camera angles alone achieve cross-signer
+# generalisation, or is the real mocap signal necessary?
+dataset:
+  max_video_len: 32
+  max_len: 64
+  meta_processor: NGTPairMetaProcessor
+  video_processor: NGTPairVideoProcessor
+  text_processor: TextProcessor
+  bert_name: bert-base-cased
+  pair_manifest: /home/psobecki/ngt_pair_manifest.json
+  load_real: false          # no piotrAnims views
+  load_unreal: true
+  unreal_character: 0       # palmer character — 3 views: cam2, cam3, cam4
+  aligner: NGTPairAligner
+  vfeat_dim: 768
+fairseq:
+  common:
+    fp16: true
+    tensorboard_logdir: run
+    log_interval: 20
+  dataset:
+    num_workers: 4
+    batch_size: 64          # 3*64=192 encoder passes — same budget as real baseline
+    disable_validation: true
+  optimization:
+    lr: [5.0e-05]
+    clip_norm: 2.0
+    optimizer: adam
+    adam_betas: (0.9, 0.98)
+    lr_scheduler: polynomial_decay
+    total_num_update: 250
+    warmup_updates: 50
+    weight_decay: 0.01
+    ddp_backend: no_c10d
+    max_epoch: 50
+  checkpoint:
+    no_epoch_checkpoints: true
+    save_dir: runs/retri_ngt/ngt_unreal_baseline
+task_type: sweep_small
+task: NGTPairTask
+mlflow_experiment: signclip-ngt
+model:
+  model_cls: MMFusionSeparate
+  mm_encoder_cls: null
+  video_encoder_cls: MMBertForEncoder
+  text_encoder_cls: BertModel
+  num_hidden_video_layers: 12
+  vfeat_dim: 768
+loss:
+  loss_cls: SupConLoss
+  supcon_temperature: 0.07
+eval:
+  save_path: runs/retri_ngt/ngt_unreal_baseline

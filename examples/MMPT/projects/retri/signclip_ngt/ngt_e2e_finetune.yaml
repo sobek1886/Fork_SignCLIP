@@ -1,0 +1,59 @@
+# Approach C (full fine-tune): end-to-end with trainable Logos MViTv2-S.
+# Both MViT backbone and MMBert are updated — full gradient flow.
+#
+# Memory note: MViT activations are retained for backprop.
+# Reduce batch_size vs frozen variant to fit on a single A100 (40 GB).
+#
+# Prerequisite: run make_ngt_raw_manifest.py to produce ngt_raw_manifest.json.
+dataset:
+  max_video_len: 4
+  max_len: 64
+  meta_processor: NGTPairMetaProcessor
+  video_processor: NGTRawPairVideoProcessor
+  text_processor: TextProcessor
+  bert_name: bert-base-cased
+  pair_manifest: /home/psobecki/ngt_raw_manifest.json
+  load_unreal: true         # K=9: 3 real + 6 unreal views
+  aligner: NGTRawPairAligner
+  vfeat_dim: 768
+fairseq:
+  common:
+    fp16: true
+    tensorboard_logdir: run
+    log_interval: 20
+  dataset:
+    num_workers: 4
+    # Smaller batch due to MViT gradient memory overhead
+    batch_size: 2
+    disable_validation: true
+  optimization:
+    lr: [1.0e-05]           # lower LR for backbone fine-tuning
+    clip_norm: 2.0
+    optimizer: adam
+    adam_betas: (0.9, 0.98)
+    lr_scheduler: polynomial_decay
+    total_num_update: 700
+    warmup_updates: 140
+    weight_decay: 0.01
+    ddp_backend: no_c10d
+    max_epoch: 50
+  checkpoint:
+    no_epoch_checkpoints: true
+    save_dir: runs/retri_ngt/ngt_e2e_finetune
+task_type: sweep_small
+task: NGTEndToEndTask
+mlflow_experiment: signclip-ngt
+model:
+  model_cls: MMFusionE2E
+  mm_encoder_cls: null
+  video_encoder_cls: MMBertForEncoder
+  text_encoder_cls: BertModel
+  num_hidden_video_layers: 12
+  vfeat_dim: 768
+  backbone_ckpt: /home/psobecki/mmaction2/data/model/logos_autsl_wlasl_model.pth
+  freeze_backbone: false    # trainable MViT — full end-to-end
+loss:
+  loss_cls: SupConLoss
+  supcon_temperature: 0.07
+eval:
+  save_path: runs/retri_ngt/ngt_e2e_finetune

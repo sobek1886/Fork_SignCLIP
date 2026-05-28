@@ -22,3 +22,4 @@ except ImportError:
     pass
 
 from .ngt_pair_task import *
+from .ngt_e2e_task import *

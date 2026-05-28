@@ -5,6 +5,7 @@
 from .mmfusion import *
 from .transformermodel import *
 from .mmfusionnlg import *
+from .mmfusion_e2e import *
 
 try:
     from .fairseqmmmodel import *

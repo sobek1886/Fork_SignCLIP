@@ -1,0 +1,63 @@
+# Approach C (frozen backbone): end-to-end model with Logos MViTv2-S backbone
+# prepended in front of MMBert.  MViT weights are frozen; only MMBert trains.
+#
+# Data: raw video files / PNG-sequence dirs (ngt_raw_manifest.json).
+# Preprocessing: identical to extract_logos_features*.py (Logos val_pipeline).
+#
+# Prerequisite: run make_ngt_raw_manifest.py to produce ngt_raw_manifest.json.
+#
+# max_video_len is set to 4 because typical NGT sentences produce 1–4 clips
+# with the Logos sliding-window (CLIP_STRIDE=32, FRAME_INTERVAL=2).
+dataset:
+  max_video_len: 4
+  max_len: 64
+  meta_processor: NGTPairMetaProcessor
+  video_processor: NGTRawPairVideoProcessor
+  text_processor: TextProcessor
+  bert_name: bert-base-cased
+  pair_manifest: /home/psobecki/ngt_raw_manifest.json
+  load_unreal: true         # K=9: 3 real + 6 unreal views
+  aligner: NGTRawPairAligner
+  vfeat_dim: 768
+fairseq:
+  common:
+    fp16: true
+    tensorboard_logdir: run
+    log_interval: 20
+  dataset:
+    num_workers: 4
+    # 9 views × 4 clips × batch_size clips through MViT per step
+    # Frozen MViT: no MViT gradients → larger batch OK
+    batch_size: 4
+    disable_validation: true
+  optimization:
+    lr: [5.0e-05]
+    clip_norm: 2.0
+    optimizer: adam
+    adam_betas: (0.9, 0.98)
+    lr_scheduler: polynomial_decay
+    total_num_update: 700
+    warmup_updates: 140
+    weight_decay: 0.01
+    ddp_backend: no_c10d
+    max_epoch: 50
+  checkpoint:
+    no_epoch_checkpoints: true
+    save_dir: runs/retri_ngt/ngt_e2e_frozen
+task_type: sweep_small
+task: NGTEndToEndTask
+mlflow_experiment: signclip-ngt
+model:
+  model_cls: MMFusionE2E
+  mm_encoder_cls: null
+  video_encoder_cls: MMBertForEncoder
+  text_encoder_cls: BertModel
+  num_hidden_video_layers: 12
+  vfeat_dim: 768
+  backbone_ckpt: /home/psobecki/mmaction2/data/model/logos_autsl_wlasl_model.pth
+  freeze_backbone: true     # frozen MViT — only MMBert trains
+loss:
+  loss_cls: SupConLoss
+  supcon_temperature: 0.07
+eval:
+  save_path: runs/retri_ngt/ngt_e2e_frozen
