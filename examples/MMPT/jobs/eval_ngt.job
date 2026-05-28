@@ -16,17 +16,43 @@ source .venv/bin/activate
 export PYTHONPATH=$HOME/Fork_SignCLIP:$PYTHONPATH
 export PATH="$HOME/Fork_SignCLIP/examples/MMPT/.venv/bin:$PATH"
 
-echo "=== Baseline (K=3) ==="
+echo "=== Baseline (K=3 real) ==="
 srun python eval_ngt_retrieval.py \
     --config      projects/retri/signclip_ngt/ngt_baseline.yaml \
-    --checkpoint  runs/retri_ngt/ngt_baseline/checkpoint_last.pt \
+    --checkpoint  /scratch-shared/psobecki/runs/retri_ngt/ngt_baseline/checkpoint_last.pt \
     --manifest    /home/psobecki/ngt_pair_manifest.json \
     --bushuis_dir /scratch-shared/psobecki/Bushuis/logos_features
 
 echo ""
-echo "=== Intervention (K=9) ==="
+echo "=== Intervention (K=9 real+unreal) ==="
 srun python eval_ngt_retrieval.py \
     --config      projects/retri/signclip_ngt/ngt_appearance_invariant.yaml \
-    --checkpoint  runs/retri_ngt/ngt_appearance_invariant/checkpoint_last.pt \
+    --checkpoint  /scratch-shared/psobecki/runs/retri_ngt/ngt_appearance_invariant/checkpoint_last.pt \
     --manifest    /home/psobecki/ngt_pair_manifest.json \
     --bushuis_dir /scratch-shared/psobecki/Bushuis/logos_features
+
+echo ""
+echo "=== CLS token (K=9 real+unreal) ==="
+srun python eval_ngt_retrieval.py \
+    --config      projects/retri/signclip_ngt/ngt_cls_token.yaml \
+    --checkpoint  /scratch-shared/psobecki/runs/retri_ngt/ngt_cls_token/checkpoint_last.pt \
+    --manifest    /home/psobecki/ngt_pair_manifest.json \
+    --bushuis_dir /scratch-shared/psobecki/Bushuis/logos_features
+
+echo ""
+echo "=== Mean pool (K=9 real+unreal) ==="
+srun python eval_ngt_retrieval.py \
+    --config      projects/retri/signclip_ngt/ngt_mean_pool.yaml \
+    --checkpoint  /scratch-shared/psobecki/runs/retri_ngt/ngt_mean_pool/checkpoint_last.pt \
+    --manifest    /home/psobecki/ngt_pair_manifest.json \
+    --bushuis_dir /scratch-shared/psobecki/Bushuis/logos_features
+
+echo ""
+echo "=== Unreal baseline (K=3 palmer) ==="
+srun python eval_ngt_retrieval.py \
+    --config      projects/retri/signclip_ngt/ngt_unreal_baseline.yaml \
+    --checkpoint  /scratch-shared/psobecki/runs/retri_ngt/ngt_unreal_baseline/checkpoint_last.pt \
+    --manifest    /home/psobecki/ngt_pair_manifest.json \
+    --bushuis_dir /scratch-shared/psobecki/Bushuis/logos_features \
+    --use_unreal \
+    --unreal_character 0
