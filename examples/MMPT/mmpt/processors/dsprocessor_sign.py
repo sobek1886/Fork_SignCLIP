@@ -1030,9 +1030,12 @@ class NGTPairVideoProcessor(VideoProcessor):
         super().__init__(config)
         with open(config.pair_manifest) as f:
             self.manifest = json.load(f)
-        self.load_real = getattr(config, 'load_real', True)
-        self.load_unreal = getattr(config, 'load_unreal', True)
-        self.unreal_character = getattr(config, 'unreal_character', None)
+        _lr = getattr(config, 'load_real', None)
+        self.load_real = True if _lr is None else bool(_lr)
+        _lu = getattr(config, 'load_unreal', None)
+        self.load_unreal = True if _lu is None else bool(_lu)
+        _uc = getattr(config, 'unreal_character', None)
+        self.unreal_character = None if (_uc is None or _uc == 'null') else int(_uc)
 
     def __call__(self, sign_id):
         paths = self.manifest[sign_id]

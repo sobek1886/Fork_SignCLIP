@@ -11,6 +11,7 @@ dataset:
   text_processor: TextProcessor
   bert_name: bert-base-cased
   pair_manifest: /home/psobecki/ngt_pair_manifest.json
+  load_real: true           # load piotrAnims views
   load_unreal: true         # K=9: same views as ngt_appearance_invariant
   aligner: NGTPairAligner
   vfeat_dim: 768

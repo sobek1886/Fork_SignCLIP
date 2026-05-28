@@ -11,6 +11,7 @@ dataset:
   bert_name: bert-base-cased
   # pair_manifest is consumed by NGTPairMetaProcessor and NGTPairVideoProcessor
   pair_manifest: /home/psobecki/ngt_pair_manifest.json
+  load_real: true           # load piotrAnims views
   load_unreal: true         # load 'real' + 'unreal' → K=9
   aligner: NGTPairAligner
   # vfeat_dim must match Logos output (768)
