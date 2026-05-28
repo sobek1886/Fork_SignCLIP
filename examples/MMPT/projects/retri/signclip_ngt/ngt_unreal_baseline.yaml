@@ -42,7 +42,7 @@ fairseq:
     max_epoch: 50
   checkpoint:
     no_epoch_checkpoints: true
-    save_dir: runs/retri_ngt/ngt_unreal_baseline
+    save_dir: /scratch-shared/psobecki/runs/retri_ngt/ngt_unreal_baseline
 task_type: sweep_small
 task: NGTPairTask
 mlflow_experiment: signclip-ngt
@@ -57,4 +57,4 @@ loss:
   loss_cls: SupConLoss
   supcon_temperature: 0.07
 eval:
-  save_path: runs/retri_ngt/ngt_unreal_baseline
+  save_path: /scratch-shared/psobecki/runs/retri_ngt/ngt_unreal_baseline

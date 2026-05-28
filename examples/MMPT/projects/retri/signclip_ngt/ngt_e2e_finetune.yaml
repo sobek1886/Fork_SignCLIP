@@ -39,7 +39,7 @@ fairseq:
     max_epoch: 50
   checkpoint:
     no_epoch_checkpoints: true
-    save_dir: runs/retri_ngt/ngt_e2e_finetune
+    save_dir: /scratch-shared/psobecki/runs/retri_ngt/ngt_e2e_finetune
 task_type: sweep_small
 task: NGTEndToEndTask
 mlflow_experiment: signclip-ngt
@@ -56,4 +56,4 @@ loss:
   loss_cls: SupConLoss
   supcon_temperature: 0.07
 eval:
-  save_path: runs/retri_ngt/ngt_e2e_finetune
+  save_path: /scratch-shared/psobecki/runs/retri_ngt/ngt_e2e_finetune

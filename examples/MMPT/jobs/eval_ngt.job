@@ -21,7 +21,7 @@ srun python eval_ngt_retrieval.py \
     --config      projects/retri/signclip_ngt/ngt_baseline.yaml \
     --checkpoint  runs/retri_ngt/ngt_baseline/checkpoint_last.pt \
     --manifest    /home/psobecki/ngt_pair_manifest.json \
-    --bushuis_dir /home/psobecki/Bushuis/logos_features
+    --bushuis_dir /scratch-shared/psobecki/Bushuis/logos_features
 
 echo ""
 echo "=== Intervention (K=9) ==="
@@ -29,4 +29,4 @@ srun python eval_ngt_retrieval.py \
     --config      projects/retri/signclip_ngt/ngt_appearance_invariant.yaml \
     --checkpoint  runs/retri_ngt/ngt_appearance_invariant/checkpoint_last.pt \
     --manifest    /home/psobecki/ngt_pair_manifest.json \
-    --bushuis_dir /home/psobecki/Bushuis/logos_features
+    --bushuis_dir /scratch-shared/psobecki/Bushuis/logos_features

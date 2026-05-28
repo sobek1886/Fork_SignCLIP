@@ -22,6 +22,6 @@ echo ""
 echo "=== Eval: Unreal Baseline (K=3 palmer) ==="
 srun python eval_ngt_retrieval.py \
     --config      projects/retri/signclip_ngt/ngt_unreal_baseline.yaml \
-    --checkpoint  runs/retri_ngt/ngt_unreal_baseline/checkpoint_last.pt \
+    --checkpoint  /scratch-shared/psobecki/runs/retri_ngt/ngt_unreal_baseline/checkpoint_last.pt \
     --manifest    /home/psobecki/ngt_pair_manifest.json \
-    --bushuis_dir /home/psobecki/Bushuis/logos_features
+    --bushuis_dir /scratch-shared/psobecki/Bushuis/logos_features
