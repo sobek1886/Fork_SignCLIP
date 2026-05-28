@@ -123,6 +123,11 @@ class MMFusion(nn.Module):
         if config.dataset.num_iso_layer is not None:
             self.last_iso_layer = config.dataset.num_iso_layer - 1 + 1
 
+        self.use_cls_token = (
+            config.model.use_cls_token
+            if "use_cls_token" in config.model else False
+        )
+
         if config.model.mm_encoder_cls is not None:
             mm_encoder_cls = getattr(transformermodel, config.model.mm_encoder_cls)
             model_config = AutoConfig.from_pretrained(config.dataset.bert_name)
@@ -577,6 +582,12 @@ class MMFusionSeparate(MMFusionShare):
         if output_hidden_states:
             return video_outputs
 
+        if self.use_cls_token:
+            pooled_video = video_outputs[:, 0, :]
+            if hasattr(self, 'video_projection'):
+                pooled_video = self.video_projection(pooled_video)
+            return pooled_video
+
         batch_size = cmasks.size(0)
 
         video_attention_mask = torch.cat(
@@ -963,3 +974,40 @@ class MMFusionShareActionLocalization(MMFusionShare):
         # this line is not right.
         logits = torch.mm(video_seq, pooled_text.transpose(1, 0))
         return {"logits": logits}
+
+
+# ---------------------------------------------------------------------------
+# NGT diagnostics
+# ---------------------------------------------------------------------------
+
+class MMFusionMeanPool(nn.Module):
+    """Mean-pool MViT per-clip features over time — no MMBert temporal aggregator.
+
+    Replaces MMFusionSeparate with a single masked mean-pool + LayerNorm.
+    Used as a diagnostic: if SupConLoss on raw Logos clip features alone achieves
+    similar cross-signer retrieval to the full MMBert model, the transformer is
+    not adding value beyond temporal aggregation.
+
+    Accepts the same forward_video(vfeats, vmasks, caps, cmasks) signature as
+    MMFusionSeparate so it is compatible with NGTPairTask out-of-the-box.
+    caps / cmasks are accepted but ignored.
+    """
+
+    def __init__(self, config, **kwargs):
+        super().__init__()
+        vfeat_dim = config.model.vfeat_dim
+        self.norm = nn.LayerNorm(vfeat_dim)
+
+    def forward_video(self, vfeats, vmasks, caps, cmasks, **kwargs):
+        """Masked mean-pool → LayerNorm → (B, D)."""
+        # vfeats: (B, T, D),  vmasks: (B, T) bool
+        mask = vmasks.float().unsqueeze(-1)              # (B, T, 1)
+        denom = mask.sum(dim=1).clamp(min=1)             # (B, 1)
+        pooled = (vfeats * mask).sum(dim=1) / denom      # (B, D)
+        return self.norm(pooled)
+
+    def forward_text(self, caps, cmasks, **kwargs):
+        raise NotImplementedError("MMFusionMeanPool has no text encoder.")
+
+    def forward(self, vfeats, vmasks, caps, cmasks, **kwargs):
+        return {"pooled_video": self.forward_video(vfeats, vmasks, caps, cmasks)}
