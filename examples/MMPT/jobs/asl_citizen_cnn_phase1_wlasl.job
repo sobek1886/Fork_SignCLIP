@@ -6,7 +6,7 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=5
 #SBATCH --time=2:00:00
-#SBATCH --output=jobs/output/slurm_cnn_phase1_wlasl_%A.txt
+#SBATCH --output=jobs/output/slurm_%x_%A.txt
 
 module purge
 module load 2025

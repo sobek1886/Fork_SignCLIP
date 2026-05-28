@@ -132,6 +132,10 @@ def main():
                         help="Path to ngt_pair_manifest.json")
     parser.add_argument("--bushuis_dir", required=True,
                         help="Directory containing bushuis_M*.npy features")
+    parser.add_argument("--use_unreal", action="store_true",
+                        help="Use unreal (palmer) features instead of real (piotrAnims)")
+    parser.add_argument("--unreal_character", type=int, default=0,
+                        help="Which unreal character to use: 0=palmer, 1=digits (default: 0)")
     parser.add_argument("--device",
                         default="cuda" if torch.cuda.is_available() else "cpu")
     args = parser.parse_args()
@@ -174,8 +178,15 @@ def main():
     emb_right   = {}
     emb_bushuis = {}
 
+    _VIEWS_PER_CHARACTER = 3
+    signer_label = "palmer" if args.use_unreal else "piotrAnims"
+
     for sign_id in tqdm(eval_ids, desc="Embedding"):
-        paths = manifest[sign_id]["real"]   # [LEFT, MIDDLE, RIGHT]
+        if args.use_unreal:
+            start = args.unreal_character * _VIEWS_PER_CHARACTER
+            paths = manifest[sign_id]["unreal"][start:start + _VIEWS_PER_CHARACTER]
+        else:
+            paths = manifest[sign_id]["real"]   # [LEFT, MIDDLE, RIGHT]
         emb_left[sign_id]    = embed_npy(paths[0], model, max_video_len, cls_id, sep_id, device)
         emb_middle[sign_id]  = embed_npy(paths[1], model, max_video_len, cls_id, sep_id, device)
         emb_right[sign_id]   = embed_npy(paths[2], model, max_video_len, cls_id, sep_id, device)
@@ -199,12 +210,12 @@ def main():
     print(f"\nSigns evaluated: {len(eval_ids)}\n")
 
     print("Gallery: MIDDLE only")
-    print(f"  Bushuis → piotrAnims:  {fmt(retrieval_metrics(bushuis_vecs, middle_vecs))}")
-    print(f"  piotrAnims → Bushuis:  {fmt(retrieval_metrics(middle_vecs, bushuis_vecs))}")
+    print(f"  Bushuis → {signer_label}:  {fmt(retrieval_metrics(bushuis_vecs, middle_vecs))}")
+    print(f"  {signer_label} → Bushuis:  {fmt(retrieval_metrics(middle_vecs, bushuis_vecs))}")
 
     print("\nGallery: avg(LEFT + MIDDLE + RIGHT)")
-    print(f"  Bushuis → piotrAnims:  {fmt(retrieval_metrics(bushuis_vecs, avg_vecs))}")
-    print(f"  piotrAnims → Bushuis:  {fmt(retrieval_metrics(avg_vecs, bushuis_vecs))}")
+    print(f"  Bushuis → {signer_label}:  {fmt(retrieval_metrics(bushuis_vecs, avg_vecs))}")
+    print(f"  {signer_label} → Bushuis:  {fmt(retrieval_metrics(avg_vecs, bushuis_vecs))}")
 
 
 if __name__ == "__main__":
