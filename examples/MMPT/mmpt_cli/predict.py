@@ -51,6 +51,55 @@ def get_dataloader(config, verbose=True):
     return test_dataloader
 
 
+def _log_test_metrics_to_mlflow(config, taskconfig_path, metrics):
+    """Log test metrics into the corresponding MLflow training run.
+
+    Derives the training run name by stripping the leading "test_" from the
+    test config filename, then searches the same experiment for that run and
+    appends test_t2v_* / test_v2t_* metrics.
+    """
+    try:
+        import mlflow as _mlflow
+        experiment_name = getattr(config, "mlflow_experiment", None)
+        if not experiment_name:
+            print("[MLflow] Warning: 'mlflow_experiment' not set in config; skipping test metric logging.")
+            return
+        test_config_name = os.path.splitext(os.path.basename(taskconfig_path))[0]
+        train_run_name = (
+            test_config_name[len("test_"):]
+            if test_config_name.startswith("test_")
+            else test_config_name
+        )
+        _mlflow.set_tracking_uri("https://mlflow.ai.mytkhgroup.com/")
+        _mlflow.set_experiment(experiment_name)
+        client = _mlflow.tracking.MlflowClient()
+        exp = client.get_experiment_by_name(experiment_name)
+        if exp is None:
+            print(f"[MLflow] Experiment '{experiment_name}' not found; skipping test metric logging.")
+            return
+        runs = client.search_runs(
+            experiment_ids=[exp.experiment_id],
+            filter_string=f"attributes.run_name = '{train_run_name}'",
+            order_by=["start_time DESC"],
+            max_results=1,
+        )
+        if not runs:
+            print(f"[MLflow] No run named '{train_run_name}' found; skipping test metric logging.")
+            return
+        run_id = runs[0].info.run_id
+        flat = {}
+        for direction, direction_metrics in metrics.items():
+            for name, value in direction_metrics.items():
+                if name != "error":
+                    flat[f"test_{direction}_{name}"] = float(value)
+        with _mlflow.start_run(run_id=run_id):
+            _mlflow.log_metrics(flat)
+        print(f"[MLflow] Logged test metrics to run {run_id} ({train_run_name}): "
+              + ", ".join(f"{k}={v:.4f}" for k, v in flat.items()))
+    except Exception as exc:
+        print(f"[MLflow] Warning: could not log test metrics: {exc}")
+
+
 def main(args):
     config = load_config(args)
     verbose = not args.quiet
@@ -105,6 +154,7 @@ def main(args):
             print("best results:")
             print(best_result[0])
             evaluator.metric.print_computed_metrics(best_result[1])
+            _log_test_metrics_to_mlflow(config, args.taskconfig, best_result[1])
 
         elif prefix.startswith("vis"):
             model = mmtask.load_checkpoint(config.fairseq.common_eval.path)
