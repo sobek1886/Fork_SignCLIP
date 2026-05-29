@@ -19,7 +19,7 @@ from mmpt import processors
 from mmpt.datasets import MMDataset
 
 
-def get_dataloader(config):
+def get_dataloader(config, verbose=True):
     meta_processor_cls = getattr(processors, config.dataset.meta_processor)
     video_processor_cls = getattr(processors, config.dataset.video_processor)
     text_processor_cls = getattr(processors, config.dataset.text_processor)
@@ -37,8 +37,9 @@ def get_dataloader(config):
         aligner,
     )
     print("test_len", len(test_data))
-    output = test_data[0]
-    test_data.print_example(output)
+    if verbose:
+        output = test_data[0]
+        test_data.print_example(output)
 
     test_dataloader = DataLoader(
         test_data,
@@ -52,12 +53,14 @@ def get_dataloader(config):
 
 def main(args):
     config = load_config(args)
+    verbose = not args.quiet
 
-    if isinstance(config, omegaconf.dictconfig.DictConfig):
-        print(OmegaConf.to_yaml(config))
-    else:
-        pp = pprint.PrettyPrinter(indent=4)
-        pp.print(config)
+    if verbose:
+        if isinstance(config, omegaconf.dictconfig.DictConfig):
+            print(OmegaConf.to_yaml(config))
+        else:
+            pp = pprint.PrettyPrinter(indent=4)
+            pp.print(config)
 
     mmtask = Task.config_task(config)
     mmtask.build_model()
@@ -68,7 +71,7 @@ def main(args):
         configs = [OmegaConf.create(dict(config, dataset=dict(config['dataset'], test_datasets=[test_dataset]))) for test_dataset in config['dataset']['test_datasets']]
 
     for config in configs:
-        test_dataloader = get_dataloader(config)
+        test_dataloader = get_dataloader(config, verbose=verbose)
         checkpoint_search_path = os.path.dirname(config.eval.save_path)
         results = []
 
@@ -115,5 +118,7 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("taskconfig", type=str)
+    parser.add_argument("--quiet", "-q", action="store_true",
+                        help="Suppress config dump and per-example debug output; print only final metrics.")
     args = parser.parse_args()
     main(args)
