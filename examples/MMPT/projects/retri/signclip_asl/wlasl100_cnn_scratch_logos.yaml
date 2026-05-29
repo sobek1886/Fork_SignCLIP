@@ -10,6 +10,9 @@ dataset:
   text_processor: TextProcessor
   bert_name: bert-base-cased
   splits_dir: /home/psobecki/wlasl100/splits
+  train_path: placeholder
+  val_path: placeholder
+  test_path: placeholder
   vfeat_dir: /scratch-shared/psobecki/wlasl100/logos_features
   dataset_name: wlasl100
   vfeat_custom: 1
@@ -51,3 +54,4 @@ loss:
   loss_cls: MMContraLoss
 eval:
   save_path: runs/retri_asl/wlasl100_cnn_scratch_logos
+mlflow_experiment: signclip-wlasl100
