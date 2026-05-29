@@ -11,7 +11,7 @@ Reads the three split CSVs produced by generate_wlasl100_splits.py and extracts
 extract_asl_citizen_poses.py.
 
 Split/directory layout on Snellius:
-  train  →  augmented_videos/{video_id}_original.mp4   feat_id: wlasl100_{video_id}_original
+  train  →  augmented_videos/{video_id}/original.mp4    feat_id: wlasl100_{video_id}_original
   val    →  val/{video_id}.mp4                         feat_id: wlasl100_val_{video_id}
   test   →  test/{video_id}.mp4                        feat_id: wlasl100_test_{video_id}
 
@@ -164,42 +164,58 @@ def _collect_tasks(splits_dir, train_video_dir, val_video_dir, test_video_dir,
                    output_dir, overwrite):
     """
     Split  | CSV Video file        | feat_id                 | actual video path
-    -------|-----------------------|-------------------------|-----------------------------------
-    train  | {vid}_original.mp4    | wlasl100_{vid}_original | train_video_dir/{vid}_original.mp4
+    -------|-----------------------|-------------------------|-------------------------------------------
+    train  | {vid}_original.mp4    | wlasl100_{vid}_original | train_video_dir/{vid}/original.mp4
     val    | val_{vid}.mp4         | wlasl100_val_{vid}      | val_video_dir/{vid}.mp4
     test   | {vid}.mp4             | wlasl100_test_{vid}     | test_video_dir/{vid}.mp4
     """
-    split_configs = [
-        ("train.csv", "wlasl100",      train_video_dir, None),
-        ("val.csv",   "wlasl100",      val_video_dir,   "val_"),  # strip prefix for actual path
-        ("test.csv",  "wlasl100_test", test_video_dir,  None),
-    ]
-
     tasks = []
     seen  = set()
 
-    for csv_name, dataset_name, video_dir, strip_prefix in split_configs:
-        csv_path = os.path.join(splits_dir, csv_name)
-        if not os.path.exists(csv_path):
-            print(f"  [skip] {csv_path} not found")
-            continue
-
+    # --- train ---
+    csv_path = os.path.join(splits_dir, "train.csv")
+    if os.path.exists(csv_path):
         with open(csv_path, newline="") as f:
             for row in csv.DictReader(f):
-                video_file = row["Video file"]
-                video_stem = os.path.splitext(video_file)[0]
-                feat_id    = f"{dataset_name}_{video_stem}"
-
+                video_file = row["Video file"]               # e.g. "05237_original.mp4"
+                video_stem = os.path.splitext(video_file)[0] # "05237_original"
+                feat_id    = f"wlasl100_{video_stem}"
                 if feat_id in seen:
                     continue
                 seen.add(feat_id)
+                # "05237_original" → subdir "05237", filename "original.mp4"
+                video_id = video_stem.replace("_original", "")
+                video_path = os.path.join(train_video_dir, video_id, "original.mp4")
+                tasks.append((feat_id, video_path, output_dir, overwrite))
 
-                # val: CSV has 'val_{vid}.mp4' but file on disk is '{vid}.mp4'
-                actual_filename = video_file
-                if strip_prefix and video_file.startswith(strip_prefix):
-                    actual_filename = video_file[len(strip_prefix):]
+    # --- val ---
+    csv_path = os.path.join(splits_dir, "val.csv")
+    if os.path.exists(csv_path):
+        with open(csv_path, newline="") as f:
+            for row in csv.DictReader(f):
+                video_file = row["Video file"]               # e.g. "val_69422.mp4"
+                video_stem = os.path.splitext(video_file)[0] # "val_69422"
+                feat_id    = f"wlasl100_{video_stem}"
+                if feat_id in seen:
+                    continue
+                seen.add(feat_id)
+                # strip "val_" prefix to get the actual filename on disk
+                actual_filename = video_file[len("val_"):]   # "69422.mp4"
+                video_path = os.path.join(val_video_dir, actual_filename)
+                tasks.append((feat_id, video_path, output_dir, overwrite))
 
-                video_path = os.path.join(video_dir, actual_filename)
+    # --- test ---
+    csv_path = os.path.join(splits_dir, "test.csv")
+    if os.path.exists(csv_path):
+        with open(csv_path, newline="") as f:
+            for row in csv.DictReader(f):
+                video_file = row["Video file"]               # e.g. "51068.mp4"
+                video_stem = os.path.splitext(video_file)[0] # "51068"
+                feat_id    = f"wlasl100_test_{video_stem}"
+                if feat_id in seen:
+                    continue
+                seen.add(feat_id)
+                video_path = os.path.join(test_video_dir, video_file)
                 tasks.append((feat_id, video_path, output_dir, overwrite))
 
     return tasks
