@@ -1,0 +1,25 @@
+#!/bin/bash
+
+#SBATCH --partition=rome
+#SBATCH --job-name=extract_wlasl100_poses
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=64
+#SBATCH --time=24:00:00
+#SBATCH --output=jobs/output/slurm_%x_%A.txt
+
+module purge
+module load 2025
+
+cd $HOME/Fork_SignCLIP/examples/MMPT
+source .venv/bin/activate
+export PYTHONPATH=$HOME/Fork_SignCLIP:$PYTHONPATH
+export PATH="$HOME/Fork_SignCLIP/examples/MMPT/.venv/bin:$PATH"
+
+srun python extract_wlasl100_poses.py \
+    --splits_dir      $HOME/wlasl100/splits \
+    --train_video_dir /scratch-shared/psobecki/wlasl100/augmented_videos \
+    --val_video_dir   /scratch-shared/psobecki/wlasl100/val \
+    --test_video_dir  /scratch-shared/psobecki/wlasl100/test \
+    --output_dir      /scratch-shared/psobecki/wlasl100/pose_features \
+    --model_path      $HOME/Fork_SignCLIP/examples/MMPT/holistic_landmarker.task \
+    --workers         60

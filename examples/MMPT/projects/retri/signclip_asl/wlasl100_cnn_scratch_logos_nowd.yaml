@@ -33,13 +33,15 @@ fairseq:
     optimizer: adam
     adam_betas: (0.9, 0.98)
     lr_scheduler: polynomial_decay
-    total_num_update: 1000000
-    warmup_updates: 500
+    total_num_update: 900
+    warmup_updates: 50
     weight_decay: 0.0
     ddp_backend: no_c10d
-    max_epoch: 50
+    max_epoch: 300
   checkpoint:
     no_epoch_checkpoints: true
+    reset_lr_scheduler: true
+    reset_optimizer: true
     save_dir: runs/retri_asl/wlasl100_cnn_scratch_logos_nowd
 task_type: sweep_small
 model:

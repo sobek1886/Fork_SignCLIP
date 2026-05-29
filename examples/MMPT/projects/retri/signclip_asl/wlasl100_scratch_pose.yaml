@@ -1,9 +1,9 @@
-# CNN-based SignCLIP trained from scratch on WLASL100.
-# Uses pre-extracted MViTv2-S Logos features (768-dim).
+# Pose-based SignCLIP trained from scratch on WLASL100.
+# Uses MediaPipe Holistic (609-dim) features extracted by extract_wlasl100_poses.py.
 # Both BERT encoders initialise from bert-base-cased (no Spreadthesign pre-training).
-# Mirrors asl_citizen_cnn_scratch_logos.yaml but targets WLASL100.
+# Direct pose-based counterpart to wlasl100_cnn_scratch_logos.yaml.
 dataset:
-  max_video_len: 32
+  max_video_len: 128
   max_len: 64
   meta_processor: SignCLIPVideoCSVMetaProcessor
   video_processor: RWTHFSVideoProcessor
@@ -13,7 +13,7 @@ dataset:
   train_path: placeholder
   val_path: placeholder
   test_path: placeholder
-  vfeat_dir: /scratch-shared/psobecki/wlasl100/logos_features
+  vfeat_dir: /scratch-shared/psobecki/wlasl100/pose_features
   dataset_name: wlasl100
   vfeat_custom: 1
   aligner: DSAligner
@@ -41,9 +41,7 @@ fairseq:
     max_epoch: 300
   checkpoint:
     no_epoch_checkpoints: true
-    reset_lr_scheduler: true
-    reset_optimizer: true
-    save_dir: runs/retri_asl/wlasl100_cnn_scratch_logos
+    save_dir: runs/retri_asl/wlasl100_scratch_pose
 task_type: sweep_small
 model:
   model_cls: MMFusionSeparate
@@ -51,9 +49,9 @@ model:
   video_encoder_cls: MMBertForEncoder
   text_encoder_cls: BertModel
   num_hidden_video_layers: 12
-  vfeat_dim: 768
+  vfeat_dim: 609
 loss:
   loss_cls: MMContraLoss
 eval:
-  save_path: runs/retri_asl/wlasl100_cnn_scratch_logos
+  save_path: runs/retri_asl/wlasl100_scratch_pose
 mlflow_experiment: signclip-wlasl100
