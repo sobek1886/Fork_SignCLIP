@@ -1,0 +1,52 @@
+# CNN-based SignCLIP trained from scratch on WLASL100.
+# Uses pre-extracted MViTv2-S Logos features (768-dim).
+# Comparable to wlasl100_cnn_scratch_logos but with no weight decay.
+dataset:
+  max_video_len: 32
+  max_len: 64
+  meta_processor: SignCLIPVideoCSVMetaProcessor
+  video_processor: RWTHFSVideoProcessor
+  text_processor: TextProcessor
+  bert_name: bert-base-cased
+  splits_dir: /home/psobecki/wlasl100/splits
+  vfeat_dir: /scratch-shared/psobecki/wlasl100/logos_features
+  dataset_name: wlasl100
+  vfeat_custom: 1
+  aligner: DSAligner
+  sp_universal_tagging: true
+  augment_temporal: true
+fairseq:
+  common:
+    fp16: true
+    tensorboard_logdir: run
+    log_interval: 20
+  dataset:
+    num_workers: 4
+    batch_size: 256
+  optimization:
+    lr:
+    - 5.0e-05
+    clip_norm: 2.0
+    optimizer: adam
+    adam_betas: (0.9, 0.98)
+    lr_scheduler: polynomial_decay
+    total_num_update: 1000000
+    warmup_updates: 500
+    weight_decay: 0.0
+    ddp_backend: no_c10d
+    max_epoch: 50
+  checkpoint:
+    no_epoch_checkpoints: true
+    save_dir: runs/retri_asl/wlasl100_cnn_scratch_logos_nowd
+task_type: sweep_small
+model:
+  model_cls: MMFusionSeparate
+  mm_encoder_cls: null
+  video_encoder_cls: MMBertForEncoder
+  text_encoder_cls: BertModel
+  num_hidden_video_layers: 12
+  vfeat_dim: 768
+loss:
+  loss_cls: MMContraLoss
+eval:
+  save_path: runs/retri_asl/wlasl100_cnn_scratch_logos_nowd
