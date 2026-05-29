@@ -41,7 +41,10 @@ def load_split(csv_path):
             video_file = row['Video file']
             gloss = row['Gloss']
             video_id = os.path.splitext(video_file)[0]
-            signer_id = video_id.split('-')[0]
+            # Participant ID column (P1–P52) is the actual signer identity.
+            # Falls back to the numeric video-UID prefix if the column is absent
+            # (older Snellius CSVs that were stripped to Video file + Gloss only).
+            signer_id = row.get('Participant ID') or video_id.split('-')[0]
             rows.append({'video_id': video_id, 'gloss': gloss, 'signer_id': signer_id})
     return rows
 
