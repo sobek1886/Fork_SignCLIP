@@ -183,8 +183,13 @@ def main():
             'train_videos': [r['video_id'] for r in rows],
         }
 
-    n_single = sum(1 for s in class_stats.values() if s['train_signers'] == 1)
-    print(f'Train classes: {len(class_stats)} | 1-signer classes: {n_single}')
+    signer_counts = sorted(s['train_signers'] for s in class_stats.values())
+    n_single = sum(1 for c in signer_counts if c == 1)
+    print(f'Train classes: {len(class_stats)} | '
+          f'signers per class: min={signer_counts[0]} '
+          f'p10={signer_counts[len(signer_counts)//10]} '
+          f'median={signer_counts[len(signer_counts)//2]} '
+          f'max={signer_counts[-1]}')
 
     # ── Load eval embeddings ─────────────────────────────────────────────────
     embeddings = load_embeddings(args.eval_dir)
@@ -268,17 +273,21 @@ def main():
 
     # ── Summary stats ────────────────────────────────────────────────────────
     selected_set = set(selected)
-    selected_single = sum(
-        1 for gloss, s in class_stats.items()
-        if s['train_signers'] == 1 and any(v in selected_set for v in s['train_videos'])
+    selected_signer_counts = sorted(
+        class_stats[r['gloss']]['train_signers']
+        for r in rows_out
+        if r['train_count'] > 0 and any(v in selected_set for v in class_stats[r['gloss']]['train_videos'])
     )
     print(f'\n=== Summary ===')
-    print(f'  Total train classes   : {len(class_stats)}')
-    print(f'  1-signer classes      : {n_single}')
-    print(f'  Budget                : {args.budget} videos')
-    print(f'  Selected              : {len(selected)} videos from {classes_selected} classes')
-    print(f'  Of which 1-signer cls : {selected_single}')
-    print(f'  Overall test accuracy : {np.mean(list(per_class_acc.values())):.4f}')
+    print(f'  Total train classes       : {len(class_stats)}')
+    print(f'  Budget                    : {args.budget} videos')
+    print(f'  Selected                  : {len(selected)} videos from {classes_selected} classes')
+    if selected_signer_counts:
+        print(f'  Signers/class (selected)  : '
+              f'min={selected_signer_counts[0]} '
+              f'median={selected_signer_counts[len(selected_signer_counts)//2]} '
+              f'max={selected_signer_counts[-1]}')
+    print(f'  Overall test accuracy     : {np.mean(list(per_class_acc.values())):.4f}')
     print(f'')
     print(f'Next steps:')
     print(f'  1. rsync ASL_Citizen videos for selected IDs to local Mac')
