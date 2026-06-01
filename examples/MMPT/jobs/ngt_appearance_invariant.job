@@ -17,3 +17,9 @@ export PYTHONPATH=$HOME/Fork_SignCLIP:$PYTHONPATH
 export PATH="$HOME/Fork_SignCLIP/examples/MMPT/.venv/bin:$PATH"
 
 srun python locallaunch.py projects/retri/signclip_ngt/ngt_appearance_invariant.yaml --jobtype local_single
+
+python eval_ngt_retrieval.py \
+    --config      projects/retri/signclip_ngt/ngt_appearance_invariant.yaml \
+    --checkpoint  /scratch-shared/psobecki/runs/retri_ngt/ngt_appearance_invariant/checkpoint_last.pt \
+    --manifest    /home/psobecki/ngt_pair_manifest.json \
+    --bushuis_dir /scratch-shared/psobecki/Bushuis/logos_features

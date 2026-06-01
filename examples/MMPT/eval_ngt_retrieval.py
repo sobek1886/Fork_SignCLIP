@@ -122,6 +122,41 @@ def fmt(m: dict) -> str:
 # Main
 # ---------------------------------------------------------------------------
 
+def _log_eval_metrics_to_mlflow(config, config_path: str, metrics: dict):
+    """Log NGT retrieval metrics into the corresponding MLflow training run."""
+    try:
+        import mlflow as _mlflow
+        experiment_name = getattr(config, "mlflow_experiment", None)
+        if not experiment_name:
+            print("[MLflow] 'mlflow_experiment' not set in config; skipping.")
+            return
+        run_name = os.path.splitext(os.path.basename(config_path))[0]
+        _mlflow.set_tracking_uri("https://mlflow.ai.mytkhgroup.com/")
+        _mlflow.set_experiment(experiment_name)
+        client = _mlflow.tracking.MlflowClient()
+        exp = client.get_experiment_by_name(experiment_name)
+        if exp is None:
+            print(f"[MLflow] Experiment '{experiment_name}' not found; skipping.")
+            return
+        runs = client.search_runs(
+            experiment_ids=[exp.experiment_id],
+            filter_string=f"attributes.run_name = '{run_name}'",
+            order_by=["start_time DESC"],
+            max_results=1,
+        )
+        if not runs:
+            print(f"[MLflow] No run named '{run_name}' found; skipping.")
+            return
+        run_id = runs[0].info.run_id
+        flat = {f"eval_{k}": float(v) for k, v in metrics.items()}
+        with _mlflow.start_run(run_id=run_id):
+            _mlflow.log_metrics(flat)
+        print(f"[MLflow] Logged to run '{run_name}' ({run_id}): "
+              + ", ".join(f"{k}={v:.2f}" for k, v in flat.items()))
+    except Exception as exc:
+        print(f"[MLflow] Warning: could not log eval metrics: {exc}")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config",      required=True,
@@ -209,13 +244,25 @@ def main():
     # ------------------------------------------------------------------ #
     print(f"\nSigns evaluated: {len(eval_ids)}\n")
 
+    m_b2s_mid = retrieval_metrics(bushuis_vecs, middle_vecs)
+    m_s2b_mid = retrieval_metrics(middle_vecs, bushuis_vecs)
+    m_b2s_avg = retrieval_metrics(bushuis_vecs, avg_vecs)
+    m_s2b_avg = retrieval_metrics(avg_vecs, bushuis_vecs)
+
     print("Gallery: MIDDLE only")
-    print(f"  Bushuis → {signer_label}:  {fmt(retrieval_metrics(bushuis_vecs, middle_vecs))}")
-    print(f"  {signer_label} → Bushuis:  {fmt(retrieval_metrics(middle_vecs, bushuis_vecs))}")
+    print(f"  Bushuis → {signer_label}:  {fmt(m_b2s_mid)}")
+    print(f"  {signer_label} → Bushuis:  {fmt(m_s2b_mid)}")
 
     print("\nGallery: avg(LEFT + MIDDLE + RIGHT)")
-    print(f"  Bushuis → {signer_label}:  {fmt(retrieval_metrics(bushuis_vecs, avg_vecs))}")
-    print(f"  {signer_label} → Bushuis:  {fmt(retrieval_metrics(avg_vecs, bushuis_vecs))}")
+    print(f"  Bushuis → {signer_label}:  {fmt(m_b2s_avg)}")
+    print(f"  {signer_label} → Bushuis:  {fmt(m_s2b_avg)}")
+
+    mlflow_metrics = {}
+    for key, m in [("b2s_mid", m_b2s_mid), ("s2b_mid", m_s2b_mid),
+                   ("b2s_avg", m_b2s_avg), ("s2b_avg", m_s2b_avg)]:
+        for metric, val in m.items():
+            mlflow_metrics[f"{key}_{metric.replace('@', '')}"] = val
+    _log_eval_metrics_to_mlflow(config, args.config, mlflow_metrics)
 
 
 if __name__ == "__main__":

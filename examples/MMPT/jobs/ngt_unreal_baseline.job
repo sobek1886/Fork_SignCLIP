@@ -20,7 +20,7 @@ srun python locallaunch.py projects/retri/signclip_ngt/ngt_unreal_baseline.yaml 
 
 echo ""
 echo "=== Eval: Unreal Baseline (K=3 palmer) ==="
-srun python eval_ngt_retrieval.py \
+python eval_ngt_retrieval.py \
     --config           projects/retri/signclip_ngt/ngt_unreal_baseline.yaml \
     --checkpoint       /scratch-shared/psobecki/runs/retri_ngt/ngt_unreal_baseline/checkpoint_last.pt \
     --manifest         /home/psobecki/ngt_pair_manifest.json \
