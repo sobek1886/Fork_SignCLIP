@@ -32,3 +32,4 @@ eval:
   save_path: runs/retri_asl/wlasl100_scratch_pose_nowd/eval
 metric: RWTHFSMetric
 predictor: RetrievalPredictor
+mlflow_experiment: signclip-wlasl100
