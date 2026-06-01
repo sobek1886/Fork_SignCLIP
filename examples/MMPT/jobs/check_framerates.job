@@ -19,7 +19,7 @@ import cv2, glob, os
 
 for pattern, label in [
     ("/scratch-shared/psobecki/piotrAnims/mkv/*.mkv", "piotrAnims"),
-    ("/scratch-shared/psobecki/BushuisMP4/*.mp4",     "Bushuis"),
+    ("/scratch-shared/psobecki/BushuisMP4/*.MP4",     "Bushuis"),
 ]:
     files = sorted(glob.glob(pattern))[:3]
     for f in files:
