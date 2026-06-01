@@ -17,3 +17,6 @@ export PYTHONPATH=$HOME/Fork_SignCLIP:$PYTHONPATH
 export PATH="$HOME/Fork_SignCLIP/examples/MMPT/.venv/bin:$PATH"
 
 srun python locallaunch.py projects/retri/signclip_asl/wlasl100_scratch_pose.yaml --jobtype local_single
+
+python mmpt_cli/predict.py projects/retri/signclip_asl/test_wlasl100_scratch_pose.yaml --quiet
+
