@@ -55,4 +55,4 @@ loss:
   loss_cls: MMContraLoss
 eval:
   save_path: runs/retri_asl/asl_citizen_cnn_aug_logos
-mlflow_experiment: signclip-asl-citizen
+mlflow_experiment: signclip-cnn
