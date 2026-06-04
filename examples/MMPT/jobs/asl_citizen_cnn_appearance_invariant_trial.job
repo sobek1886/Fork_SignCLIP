@@ -23,5 +23,4 @@ python make_asl_citizen_pair_manifest.py \
 
 srun python locallaunch.py \
     projects/retri/signclip_asl/asl_citizen_cnn_appearance_invariant.yaml \
-    --jobtype local_single \
-    fairseq.optimization.max_epoch=2
+    --jobtype local_single

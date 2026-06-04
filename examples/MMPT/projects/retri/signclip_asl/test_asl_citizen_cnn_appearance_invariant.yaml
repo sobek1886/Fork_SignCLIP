@@ -20,7 +20,7 @@ fairseq:
     batch_size: 512
     num_workers: 4
   common_eval:
-    path: runs/retri_asl/asl_citizen_cnn_appearance_invariant/checkpoint_best.pt
+    path: runs/retri_asl/asl_citizen_cnn_appearance_invariant/checkpoint_last.pt
 model:
   model_cls: MMFusionSeparate
   mm_encoder_cls: null
