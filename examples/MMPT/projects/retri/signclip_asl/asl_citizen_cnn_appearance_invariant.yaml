@@ -48,7 +48,7 @@ fairseq:
     reset_dataloader: true
 task_type: sweep_small
 task: NGTPairTask
-mlflow_experiment: signclip-asl-citizen
+mlflow_experiment: signclip-cnn
 model:
   model_cls: MMFusionSeparate
   mm_encoder_cls: null
