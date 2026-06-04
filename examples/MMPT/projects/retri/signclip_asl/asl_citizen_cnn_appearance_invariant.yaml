@@ -1,0 +1,63 @@
+# Appearance-invariant fine-tuning of the ASL-Citizen baseline.
+# Starts from asl_citizen_cnn_scratch_logos_nowd/checkpoint_best.pt and fine-tunes
+# with SupConLoss on ~4200 paired (original + glasses + shirt_1) training videos.
+# K=3 views per sign: 1 real (original) + 2 unreal (appearance-augmented).
+# 3*64=192 encoder passes per step ≈ same memory budget as baseline 256.
+#
+# Prerequisite: run make_asl_citizen_pair_manifest.py to produce the manifest.
+dataset:
+  max_video_len: 32
+  max_len: 64
+  meta_processor: NGTPairMetaProcessor
+  video_processor: NGTPairVideoProcessor
+  text_processor: TextProcessor
+  bert_name: bert-base-cased
+  pair_manifest: /home/psobecki/ASL_Citizen/asl_citizen_pair_manifest.json
+  load_real: true
+  load_unreal: true
+  aligner: NGTPairAligner
+  vfeat_dim: 768
+fairseq:
+  common:
+    fp16: true
+    tensorboard_logdir: run
+    log_interval: 20
+  dataset:
+    num_workers: 4
+    batch_size: 64
+    disable_validation: true
+  optimization:
+    lr:
+    - 1.0e-05
+    clip_norm: 2.0
+    optimizer: adam
+    adam_betas: (0.9, 0.98)
+    lr_scheduler: polynomial_decay
+    total_num_update: 100000
+    warmup_updates: 200
+    weight_decay: 0.01
+    ddp_backend: no_c10d
+    max_epoch: 20
+  checkpoint:
+    no_epoch_checkpoints: true
+    save_dir: runs/retri_asl/asl_citizen_cnn_appearance_invariant
+    restore_file: runs/retri_asl/asl_citizen_cnn_scratch_logos_nowd/checkpoint_best.pt
+    reset_optimizer: true
+    reset_lr_scheduler: true
+    reset_meters: true
+    reset_dataloader: true
+task_type: sweep_small
+task: NGTPairTask
+mlflow_experiment: signclip-asl-citizen
+model:
+  model_cls: MMFusionSeparate
+  mm_encoder_cls: null
+  video_encoder_cls: MMBertForEncoder
+  text_encoder_cls: BertModel
+  num_hidden_video_layers: 12
+  vfeat_dim: 768
+loss:
+  loss_cls: SupConLoss
+  supcon_temperature: 0.07
+eval:
+  save_path: runs/retri_asl/asl_citizen_cnn_appearance_invariant

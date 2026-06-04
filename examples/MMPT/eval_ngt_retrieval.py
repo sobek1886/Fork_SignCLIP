@@ -173,6 +173,8 @@ def main():
                         help="Which unreal character to use: 0=palmer, 1=digits (default: 0)")
     parser.add_argument("--device",
                         default="cuda" if torch.cuda.is_available() else "cpu")
+    parser.add_argument("--output_json", default=None,
+                        help="If given, save eval results dict to this JSON file")
     args = parser.parse_args()
 
     device = torch.device(args.device)
@@ -263,6 +265,17 @@ def main():
         for metric, val in m.items():
             mlflow_metrics[f"{key}_{metric.replace('@', '')}"] = val
     _log_eval_metrics_to_mlflow(config, args.config, mlflow_metrics)
+
+    if args.output_json:
+        results = {
+            "b2s_mid": m_b2s_mid,
+            "s2b_mid": m_s2b_mid,
+            "b2s_avg": m_b2s_avg,
+            "s2b_avg": m_s2b_avg,
+        }
+        with open(args.output_json, "w") as f:
+            json.dump(results, f, indent=2)
+        print(f"Results saved to {args.output_json}")
 
 
 if __name__ == "__main__":
