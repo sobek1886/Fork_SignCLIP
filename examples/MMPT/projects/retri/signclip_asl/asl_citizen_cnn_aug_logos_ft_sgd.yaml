@@ -1,9 +1,12 @@
-# Fine-tune the ASL-Citizen baseline for 10 epochs on ONLY the augmented videos
-# (no original training videos). Conceptually the cleanest "appearance adaptation":
-# the baseline already learned the originals, this pass exposes it purely to the
-# augmented appearances of the selected classes.
-# Same recipe as asl_citizen_cnn_aug_logos_ft but splits_dir points at an aug-only
-# train.csv (built with generate_asl_citizen_aug_splits.py --aug_only).
+# SGD fine-tune of the ASL-Citizen baseline on augmented (orig+aug) data.
+# Tests the Keskar & Socher (2017) "switch Adam -> SGD" idea: the baseline was
+# trained with Adam (fast convergence), this fine-tune phase uses SGD+momentum
+# for (hypothesised) better generalisation. Same data/recipe as
+# asl_citizen_cnn_aug_logos_ft EXCEPT the optimizer.
+#
+# NOTE: SGD's learning rate is on a totally different scale from Adam's. lr=1e-3
+# is a STARTING guess for the sweep; the useful range is ~5e-4 .. 1e-2. Sweep it
+# (see asl_citizen_cnn_aug_logos_ft_sgd_lr*.yaml) before trusting any single run.
 dataset:
   max_video_len: 32
   max_len: 64
@@ -11,7 +14,7 @@ dataset:
   video_processor: RWTHFSVideoProcessor
   text_processor: TextProcessor
   bert_name: bert-base-cased
-  splits_dir: /home/psobecki/ASL_Citizen/splits_aug_only
+  splits_dir: /home/psobecki/ASL_Citizen/splits_aug
   train_path: placeholder
   val_path: placeholder
   test_path: placeholder
@@ -31,10 +34,10 @@ fairseq:
     batch_size: 256
   optimization:
     lr:
-    - 1.0e-05
+    - 1.0e-03
     clip_norm: 2.0
-    optimizer: adam
-    adam_betas: (0.9, 0.98)
+    optimizer: sgd
+    momentum: 0.9
     lr_scheduler: polynomial_decay
     total_num_update: 100000
     warmup_updates: 200
@@ -43,7 +46,7 @@ fairseq:
     max_epoch: 50
   checkpoint:
     no_epoch_checkpoints: true
-    save_dir: runs/retri_asl/asl_citizen_cnn_aug_only_logos_ft
+    save_dir: runs/retri_asl/asl_citizen_cnn_aug_logos_ft_sgd
     restore_file: runs/retri_asl/asl_citizen_cnn_scratch_logos_nowd/checkpoint_best.pt
     reset_optimizer: true
     reset_lr_scheduler: true
@@ -60,5 +63,5 @@ model:
 loss:
   loss_cls: MMContraLoss
 eval:
-  save_path: runs/retri_asl/asl_citizen_cnn_aug_only_logos_ft
+  save_path: runs/retri_asl/asl_citizen_cnn_aug_logos_ft_sgd
 mlflow_experiment: signclip-cnn

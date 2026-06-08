@@ -37,7 +37,7 @@ fairseq:
     warmup_updates: 200
     weight_decay: 0.01
     ddp_backend: no_c10d
-    max_epoch: 10
+    max_epoch: 50
   checkpoint:
     no_epoch_checkpoints: true
     save_dir: runs/retri_asl/asl_citizen_cnn_aug_logos_ft
