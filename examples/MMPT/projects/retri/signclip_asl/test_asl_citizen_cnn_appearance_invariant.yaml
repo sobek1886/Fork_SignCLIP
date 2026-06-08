@@ -32,3 +32,4 @@ eval:
   save_path: runs/retri_asl/asl_citizen_cnn_appearance_invariant/eval
 metric: RWTHFSMetric
 predictor: RetrievalPredictor
+mlflow_experiment: signclip-cnn

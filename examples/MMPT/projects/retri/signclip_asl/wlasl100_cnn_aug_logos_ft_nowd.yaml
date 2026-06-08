@@ -1,0 +1,63 @@
+# Fine-tune the WLASL100 scratch baseline on augmented data.
+# Starts from wlasl100_cnn_scratch_logos_nowd/checkpoint_best.pt.
+# Uses original + glasses + shirt_1 augmentation (splits_aug, ~2244 examples).
+# Lower lr (1e-5) and short schedule; total_num_update kept high so lr stays
+# near its peak for the full fine-tuning run (no aggressive decay).
+dataset:
+  max_video_len: 32
+  max_len: 64
+  meta_processor: SignCLIPVideoCSVMetaProcessor
+  video_processor: RWTHFSVideoProcessor
+  text_processor: TextProcessor
+  bert_name: bert-base-cased
+  splits_dir: /home/psobecki/wlasl100/splits_aug
+  train_path: placeholder
+  val_path: placeholder
+  test_path: placeholder
+  vfeat_dir: /scratch-shared/psobecki/wlasl100/logos_features
+  dataset_name: wlasl100
+  vfeat_custom: 1
+  aligner: DSAligner
+  sp_universal_tagging: true
+  augment_temporal: true
+fairseq:
+  common:
+    fp16: true
+    tensorboard_logdir: run
+    log_interval: 20
+  dataset:
+    num_workers: 4
+    batch_size: 256
+  optimization:
+    lr:
+    - 1.0e-05
+    clip_norm: 2.0
+    optimizer: adam
+    adam_betas: (0.9, 0.98)
+    lr_scheduler: polynomial_decay
+    total_num_update: 5000
+    warmup_updates: 30
+    weight_decay: 0.0
+    ddp_backend: no_c10d
+    max_epoch: 30
+  checkpoint:
+    no_epoch_checkpoints: true
+    restore_file: runs/retri_asl/wlasl100_cnn_scratch_logos_nowd/checkpoint_best.pt
+    reset_optimizer: true
+    reset_lr_scheduler: true
+    reset_meters: true
+    reset_dataloader: true
+    save_dir: runs/retri_asl/wlasl100_cnn_aug_logos_ft_nowd
+task_type: sweep_small
+model:
+  model_cls: MMFusionSeparate
+  mm_encoder_cls: null
+  video_encoder_cls: MMBertForEncoder
+  text_encoder_cls: BertModel
+  num_hidden_video_layers: 12
+  vfeat_dim: 768
+loss:
+  loss_cls: MMContraLoss
+eval:
+  save_path: runs/retri_asl/wlasl100_cnn_aug_logos_ft_nowd
+mlflow_experiment: signclip-wlasl100
