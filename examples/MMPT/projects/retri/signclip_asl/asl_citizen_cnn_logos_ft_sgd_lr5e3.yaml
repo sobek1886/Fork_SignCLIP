@@ -1,0 +1,59 @@
+# SGD LR-sweep point: original data only, lr 5e-3, 15 epochs (ranking run).
+dataset:
+  max_video_len: 32
+  max_len: 64
+  meta_processor: SignCLIPVideoCSVMetaProcessor
+  video_processor: RWTHFSVideoProcessor
+  text_processor: TextProcessor
+  bert_name: bert-base-cased
+  splits_dir: /home/psobecki/ASL_Citizen/splits
+  train_path: placeholder
+  val_path: placeholder
+  test_path: placeholder
+  vfeat_dir: /home/psobecki/ASL_Citizen/logos_features
+  dataset_name: asl_citizen
+  vfeat_custom: 1
+  aligner: DSAligner
+  sp_universal_tagging: true
+  augment_temporal: true
+fairseq:
+  common:
+    fp16: true
+    tensorboard_logdir: run
+    log_interval: 20
+  dataset:
+    num_workers: 4
+    batch_size: 256
+  optimization:
+    lr:
+    - 5.0e-03
+    clip_norm: 2.0
+    optimizer: sgd
+    momentum: 0.9
+    lr_scheduler: polynomial_decay
+    total_num_update: 100000
+    warmup_updates: 200
+    weight_decay: 0.01
+    ddp_backend: no_c10d
+    max_epoch: 15
+  checkpoint:
+    no_epoch_checkpoints: true
+    save_dir: runs/retri_asl/asl_citizen_cnn_logos_ft_sgd_lr5e3
+    restore_file: runs/retri_asl/asl_citizen_cnn_scratch_logos_nowd/checkpoint_best.pt
+    reset_optimizer: true
+    reset_lr_scheduler: true
+    reset_meters: true
+    reset_dataloader: true
+task_type: sweep_small
+model:
+  model_cls: MMFusionSeparate
+  mm_encoder_cls: null
+  video_encoder_cls: MMBertForEncoder
+  text_encoder_cls: BertModel
+  num_hidden_video_layers: 12
+  vfeat_dim: 768
+loss:
+  loss_cls: MMContraLoss
+eval:
+  save_path: runs/retri_asl/asl_citizen_cnn_logos_ft_sgd_lr5e3
+mlflow_experiment: signclip-cnn
