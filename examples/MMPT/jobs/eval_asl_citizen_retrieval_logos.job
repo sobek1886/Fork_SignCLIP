@@ -5,7 +5,7 @@
 #SBATCH --job-name=asl_retri_logos
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
-#SBATCH --time=0:30:00
+#SBATCH --time=1:00:00
 #SBATCH --output=jobs/output/slurm_%x_%A.txt
 
 module purge
@@ -17,11 +17,22 @@ export PYTHONPATH=$HOME/Fork_SignCLIP:$PYTHONPATH
 export PATH="$HOME/Fork_SignCLIP/examples/MMPT/.venv/bin:$PATH"
 
 FEATURE_DIR=/home/psobecki/ASL_Citizen/logos_features
+POSE_DIR=/home/psobecki/ASL_Citizen/mediapipe_features
 SPLITS_DIR=/home/psobecki/ASL_Citizen/splits
-OUTPUT_JSON=runs/eval_asl_citizen_retrieval_logos.json
 
+echo "=== Logos avg (SignRep 'avg' row equivalent) ==="
 python eval_asl_citizen_retrieval.py \
-    --feature_name logos \
+    --feature_name logos_avg \
     --feature_dir  $FEATURE_DIR \
     --splits_dir   $SPLITS_DIR \
-    --output_json  $OUTPUT_JSON
+    --output_json  runs/eval_asl_citizen_retrieval_logos_avg.json
+
+echo ""
+echo "=== Logos weighted (SignRep 'weighted' row equivalent) ==="
+python eval_asl_citizen_retrieval.py \
+    --feature_name logos_weighted \
+    --feature_dir  $FEATURE_DIR \
+    --splits_dir   $SPLITS_DIR \
+    --pose_dir     $POSE_DIR \
+    --weighted \
+    --output_json  runs/eval_asl_citizen_retrieval_logos_weighted.json

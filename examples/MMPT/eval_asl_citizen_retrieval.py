@@ -23,6 +23,25 @@ Protocol
   - Report the mean over all queries, scaled x100 (as in SignRep Table 4,
     where "Rec@1"/"Rec@5" are the ASL-Citizen "Top-1"/"Top-5" accuracies).
 
+Weighted pooling (--weighted, requires --pose_dir)
+  Approximates SignRep's activity-weighted temporal pooling (eq. 11-12).
+  For each video clip t, a hand-activity score γ_t is derived from the
+  MediaPipe pose features (same files as asl_citizen_feature_l2_probe.py):
+    - Pose .npy files are (N_frames, 609): flattened (203 landmarks × 3 coords).
+      Layout: 33 POSE | 128 FACE_contour | 21 LEFT_HAND | 21 RIGHT_HAND.
+    - Left wrist y  = pose frame index 46 (landmark 15, coord 1).
+    - Right wrist y = pose frame index 49 (landmark 16, coord 1).
+    - Left/right hip y = indices 70, 73 (landmarks 23/24).
+    - In normalized coords (y ↓, centered at shoulder midpoint, shoulder-width=1):
+        stomach_y  = mean(left_hip_y, right_hip_y) / 2
+        above_stomach(h) = wrist_h_y < stomach_y
+        moving(h)        = std(wrist_h_xy over clip) > MOTION_THRESH (0.05)
+        active(h)        = above_stomach(h) OR moving(h)
+        γ_t = max(active_LH_t, active_RH_t)
+  - Pose frames are uniformly resampled to match the T Logos clips.
+  - If pose is missing, falls back to mean pooling for that video.
+  - Final weighted vector: sum(γ_t * feat_t) / sum(γ_t), or mean if all γ=0.
+
 This is generic over the feature extractor: point --feature_dir at the Logos
 features now, and at the SignRep features later, to compare feature quality
 on identical footing.
@@ -31,13 +50,20 @@ Feature files
   Named  {dataset_name}_{video_basename_no_ext}.npy  (shape T x D, or D).
 
 Usage
-  # Frozen Logos (MViTv2-S) features
+  # Frozen Logos — average pooling (SignRep "avg" row)
   python eval_asl_citizen_retrieval.py \\
       --feature_dir /home/psobecki/ASL_Citizen/logos_features \\
       --splits_dir  /home/psobecki/ASL_Citizen/splits \\
       --feature_name logos
 
-  # Later: frozen SignRep features (same protocol, fair comparison)
+  # Frozen Logos — activity-weighted pooling (SignRep "weighted" row)
+  python eval_asl_citizen_retrieval.py \\
+      --feature_dir /home/psobecki/ASL_Citizen/logos_features \\
+      --splits_dir  /home/psobecki/ASL_Citizen/splits \\
+      --feature_name logos_weighted --weighted \\
+      --pose_dir /home/psobecki/ASL_Citizen/mediapipe_features
+
+  # Later: frozen SignRep features
   python eval_asl_citizen_retrieval.py \\
       --feature_dir /home/psobecki/ASL_Citizen/signrep_features \\
       --splits_dir  /home/psobecki/ASL_Citizen/splits \\
@@ -65,9 +91,85 @@ from tqdm import tqdm
 DEFAULT_LOGOS_DIR = "/home/psobecki/ASL_Citizen/logos_features"
 DEFAULT_I3D_DIR   = "/home/psobecki/ASL_Citizen/i3d_wlasl_features"
 DEFAULT_SPLITS    = "/home/psobecki/ASL_Citizen/splits"
+DEFAULT_POSE_DIR  = "/home/psobecki/ASL_Citizen/mediapipe_features"
 DATASET_NAME      = "asl_citizen"
 
 _SPLIT_FILES = {"train": "train.csv", "val": "val.csv", "test": "test.csv"}
+
+# Pose landmark flat indices in the (609,) vector
+# Layout: [33 POSE | 128 FACE | 21 LH | 21 RH] × 3 coords, row-major
+_LW_X, _LW_Y = 15*3,   15*3+1   # left wrist
+_RW_X, _RW_Y = 16*3,   16*3+1   # right wrist
+_LH_Y        = 23*3+1            # left hip y
+_RH_Y        = 24*3+1            # right hip y
+
+# Motion threshold in shoulder-width units (hand std over a clip)
+_MOTION_THRESH = 0.05
+
+
+# ---------------------------------------------------------------------------
+# Activity-weighted pooling helpers
+# ---------------------------------------------------------------------------
+
+def _activity_weights(pose: np.ndarray, T: int) -> np.ndarray:
+    """Compute per-clip activity weights γ_t ∈ {0, 1}  (shape T,).
+
+    Approximates SignRep eq. 11-12: γ_t = max(LH_active_t, RH_active_t).
+    A hand is active in clip t if it is above the stomach midpoint OR moving.
+    Falls back to uniform weights (all ones) if pose is unusable.
+    """
+    N = pose.shape[0]
+    if N == 0 or T == 0:
+        return np.ones(T, dtype=np.float32)
+
+    # Per-frame: wrist positions and hip y
+    lw_x = pose[:, _LW_X];  lw_y = pose[:, _LW_Y]
+    rw_x = pose[:, _RW_X];  rw_y = pose[:, _RW_Y]
+    lh_y = pose[:, _LH_Y];  rh_y = pose[:, _RH_Y]
+
+    # Stomach midpoint y: halfway between shoulder midpoint (y=0) and hips.
+    # Falls back to 0.8 shoulder-widths if hip detection failed (zeros).
+    hip_y = (lh_y + rh_y) / 2.0
+    stomach_y = np.where(np.abs(hip_y) > 0.1, hip_y / 2.0, 0.8)
+
+    # Assign each pose frame to one of T clips (uniform split).
+    clip_idx = (np.arange(N) * T / N).astype(int).clip(0, T - 1)
+
+    weights = np.zeros(T, dtype=np.float32)
+    for t in range(T):
+        mask = clip_idx == t
+        if not mask.any():
+            weights[t] = 1.0   # no pose frames for this clip → treat as active
+            continue
+
+        s_y = stomach_y[mask]
+
+        lw_xt, lw_yt = lw_x[mask], lw_y[mask]
+        rw_xt, rw_yt = rw_x[mask], rw_y[mask]
+
+        # Position: hand above stomach (wrist_y < stomach_y in ↓-positive coords)
+        lh_above = (lw_yt < s_y).any()
+        rh_above = (rw_yt < s_y).any()
+
+        # Motion: std of wrist (x, y) over the clip frames
+        lh_moving = float(np.std(lw_xt)) + float(np.std(lw_yt)) > _MOTION_THRESH
+        rh_moving = float(np.std(rw_xt)) + float(np.std(rw_yt)) > _MOTION_THRESH
+
+        lh_active = lh_above or lh_moving
+        rh_active = rh_above or rh_moving
+        weights[t] = float(lh_active or rh_active)
+
+    # If all clips are inactive (pose entirely failed), fall back to uniform.
+    if weights.sum() == 0:
+        weights[:] = 1.0
+
+    return weights
+
+
+def _weighted_pool(feat: np.ndarray, weights: np.ndarray) -> np.ndarray:
+    """Weighted average of (T, D) feature clips by (T,) activity weights."""
+    w = weights / weights.sum()
+    return (feat * w[:, None]).sum(axis=0)
 
 
 # ---------------------------------------------------------------------------
@@ -95,10 +197,19 @@ def load_features(
     feature_dir: Path,
     max_videos: int | None = None,
     desc: str = "Loading features",
+    pose_dir: Path | None = None,
 ) -> tuple[np.ndarray, list[str]]:
-    """Load .npy files, mean-pool temporal axis → (N, D) matrix + gloss list."""
+    """Load .npy features, pool over time → (N, D) matrix + gloss list.
+
+    If pose_dir is given, uses activity-weighted pooling (SignRep weighted
+    variant); otherwise falls back to simple mean pooling (avg variant).
+    Videos whose pose file is missing fall back to mean pooling individually.
+    """
+    weighted = pose_dir is not None
     feats, glosses = [], []
     missing = 0
+    pose_fallback = 0
+
     for rec in tqdm(records, desc=desc):
         npy_path = feature_dir / (rec["feat_id"] + ".npy")
         if not npy_path.exists():
@@ -113,7 +224,21 @@ def load_features(
             if feat.shape[0] == 0:
                 missing += 1
                 continue
-            feat = feat.mean(axis=0)                       # → (D,)
+            if weighted:
+                pose_path = pose_dir / (rec["feat_id"] + ".npy")
+                if pose_path.exists():
+                    try:
+                        pose = np.load(pose_path).astype(np.float32)  # (N_frames, 609)
+                        w = _activity_weights(pose, feat.shape[0])
+                        feat = _weighted_pool(feat, w)
+                    except Exception:
+                        feat = feat.mean(axis=0)
+                        pose_fallback += 1
+                else:
+                    feat = feat.mean(axis=0)
+                    pose_fallback += 1
+            else:
+                feat = feat.mean(axis=0)                   # → (D,)
         elif feat.ndim != 1:
             missing += 1
             continue
@@ -124,8 +249,10 @@ def load_features(
 
     if not feats:
         raise RuntimeError(f"No features loaded from {feature_dir}")
-    print(f"  {desc}: loaded {len(feats)} / {len(records)} "
-          f"({missing} missing/invalid .npy files)")
+    msg = f"  {desc}: loaded {len(feats)} / {len(records)} ({missing} missing .npy)"
+    if weighted:
+        msg += f", {pose_fallback} mean-pool fallbacks (no pose)"
+    print(msg)
     return np.stack(feats), glosses
 
 
@@ -237,11 +364,12 @@ def evaluate(
 # Reporting
 # ---------------------------------------------------------------------------
 
-def print_results(res: dict, feature_name: str, feat_dim: int):
+def print_results(res: dict, feature_name: str, feat_dim: int, weighted: bool = False):
     W = 60
+    pool = "activity-weighted" if weighted else "mean"
     print("\n" + "=" * W)
     print(f"ASL-CITIZEN  FROZEN-FEATURE  RETRIEVAL  ({feature_name})")
-    print("(no downstream training — SignRep Table 4 protocol)")
+    print(f"(no downstream training — SignRep Table 4 protocol, {pool} pooling)")
     print("=" * W)
     print(f"  Feature dim     : {feat_dim}")
     print(f"  Gallery videos  : {res['n_gallery']}  ({res['n_glosses']} glosses)")
@@ -297,6 +425,15 @@ def main():
                         help="Cap query videos (quick sanity check)")
     parser.add_argument("--device", type=str,
                         default="cuda" if torch.cuda.is_available() else "cpu")
+    parser.add_argument("--weighted", action="store_true",
+                        help="Use activity-weighted temporal pooling instead of "
+                             "mean pooling (approximates SignRep 'weighted' row). "
+                             "Requires --pose_dir.")
+    parser.add_argument("--pose_dir", type=Path,
+                        default=Path(DEFAULT_POSE_DIR),
+                        help=f"Directory with MediaPipe pose .npy files — "
+                             f"only used when --weighted is set "
+                             f"(default: {DEFAULT_POSE_DIR})")
     parser.add_argument("--output_json", type=Path, default=None,
                         help="If set, write the metrics dict to this JSON file")
     args = parser.parse_args()
@@ -316,9 +453,14 @@ def main():
     DATASET_NAME = args.dataset_name
     device = torch.device(args.device)
 
+    pose_dir = args.pose_dir if args.weighted else None
+    if args.weighted and not args.pose_dir.exists():
+        raise FileNotFoundError(f"Pose directory not found: {args.pose_dir}")
+
     print(f"Feature dir   : {args.feature_dir}")
     print(f"Splits dir    : {args.splits_dir}")
     print(f"Gallery/query : {args.gallery_split} → {args.query_split}")
+    print(f"Pooling       : {'activity-weighted (pose_dir=' + str(pose_dir) + ')' if args.weighted else 'mean'}")
     print(f"Device        : {device}")
 
     gallery_recs = load_metadata(args.splits_dir, args.gallery_split)
@@ -326,22 +468,22 @@ def main():
 
     gallery_feats, gallery_glosses = load_features(
         gallery_recs, args.feature_dir, args.max_gallery,
-        desc=f"Loading gallery ({args.gallery_split})")
+        desc=f"Loading gallery ({args.gallery_split})", pose_dir=pose_dir)
     query_feats, query_glosses = load_features(
         query_recs, args.feature_dir, args.max_queries,
-        desc=f"Loading queries ({args.query_split})")
+        desc=f"Loading queries ({args.query_split})", pose_dir=pose_dir)
 
     feat_dim = gallery_feats.shape[1]
 
     res = evaluate(gallery_feats, gallery_glosses, query_feats, query_glosses,
                    device=device, batch_size=args.batch_size)
 
-    print_results(res, args.feature_name, feat_dim)
+    print_results(res, args.feature_name, feat_dim, weighted=args.weighted)
 
     if args.output_json:
         args.output_json.parent.mkdir(parents=True, exist_ok=True)
         with open(args.output_json, "w") as f:
-            json.dump({"feature_name": args.feature_name,
+            json.dump({"feature_name": args.feature_name, "weighted": args.weighted,
                        "feature_dim": feat_dim, **res}, f, indent=2)
         print(f"Results written to {args.output_json}")
 

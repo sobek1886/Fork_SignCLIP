@@ -1,0 +1,25 @@
+#!/bin/bash
+
+#SBATCH --partition=gpu_a100
+#SBATCH --gpus=1
+#SBATCH --job-name=asl_retri_logos_w
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --time=1:00:00
+#SBATCH --output=jobs/output/slurm_%x_%A.txt
+
+module purge
+module load 2025
+
+cd $HOME/Fork_SignCLIP/examples/MMPT
+source .venv/bin/activate
+export PYTHONPATH=$HOME/Fork_SignCLIP:$PYTHONPATH
+export PATH="$HOME/Fork_SignCLIP/examples/MMPT/.venv/bin:$PATH"
+
+python eval_asl_citizen_retrieval.py \
+    --feature_name logos_weighted \
+    --feature_dir  /home/psobecki/ASL_Citizen/logos_features \
+    --splits_dir   /home/psobecki/ASL_Citizen/splits \
+    --pose_dir     /home/psobecki/ASL_Citizen/mediapipe_features \
+    --weighted \
+    --output_json  runs/eval_asl_citizen_retrieval_logos_weighted.json
