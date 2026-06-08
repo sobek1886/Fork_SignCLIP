@@ -7,10 +7,10 @@ dataset:
   video_processor: RWTHFSVideoProcessor
   text_processor: TextProcessor
   bert_name: bert-base-cased
-  splits_dir: /home/psobecki/wlasl100/splits
-  vfeat_dir: /scratch-shared/psobecki/wlasl100/logos_features
+  splits_dir: /home/psobecki/ASL_Citizen/splits
+  vfeat_dir: /home/psobecki/ASL_Citizen/logos_features
+  dataset_name: asl_citizen
   vfeat_custom: 1
-  dataset_name: wlasl100_test
   aligner: DSAligner
   sp_universal_tagging: true
   test_separately: false
@@ -20,7 +20,7 @@ fairseq:
     batch_size: 512
     num_workers: 4
   common_eval:
-    path: runs/retri_asl/wlasl100_cnn_scratch_logos_nowd/checkpoint_best.pt
+    path: runs/retri_asl/asl_citizen_cnn_aug_logos_nowd/checkpoint_best.pt
 model:
   model_cls: MMFusionSeparate
   mm_encoder_cls: null
@@ -29,7 +29,7 @@ model:
   num_hidden_video_layers: 12
   vfeat_dim: 768
 eval:
-  save_path: runs/retri_asl/wlasl100_cnn_scratch_logos_nowd/eval
+  save_path: runs/retri_asl/asl_citizen_cnn_aug_logos_nowd/eval
 metric: RWTHFSMetric
 predictor: RetrievalPredictor
-mlflow_experiment: signclip-wlasl100
+mlflow_experiment: signclip-cnn

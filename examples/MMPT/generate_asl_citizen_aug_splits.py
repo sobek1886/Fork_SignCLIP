@@ -39,6 +39,9 @@ def main():
                         help='One video_id per line (no .mp4 extension)')
     parser.add_argument('--variants', nargs='+', default=['glasses', 'shirt_1'],
                         help='Augmentation variants to add to train split')
+    parser.add_argument('--aug_only', action='store_true',
+                        help='Write only the augmented rows to train.csv '
+                             '(omit the original training videos)')
     parser.add_argument('--output_dir', required=True)
     args = parser.parse_args()
 
@@ -77,7 +80,10 @@ def main():
     if missing_glosses:
         print(f'WARNING: {missing_glosses} aug video IDs not found in train.csv (no row added)')
 
-    all_train_rows = original_rows + aug_rows
+    if args.aug_only:
+        all_train_rows = aug_rows
+    else:
+        all_train_rows = original_rows + aug_rows
 
     # Write train.csv
     train_out = os.path.join(args.output_dir, 'train.csv')
@@ -85,7 +91,8 @@ def main():
         writer = csv.DictWriter(f, fieldnames=['Video file', 'Gloss'])
         writer.writeheader()
         writer.writerows(all_train_rows)
-    print(f'Wrote {len(original_rows)} original + {len(aug_rows)} augmented = '
+    n_orig = 0 if args.aug_only else len(original_rows)
+    print(f'Wrote {n_orig} original + {len(aug_rows)} augmented = '
           f'{len(all_train_rows)} rows → {train_out}')
 
     # Copy val and test unchanged
