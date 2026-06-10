@@ -22,15 +22,21 @@ export PATH="$HOME/Fork_SignCLIP/examples/MMPT/.venv/bin:$PATH"
 SPLITS=$HOME/ASL_Citizen/splits
 mkdir -p runs/asl_ft_eval
 
-# name:feature_dir pairs. 'baseline' = raw Logos features (no fine-tuning) for reference.
+# name:feature_dir pairs. 'baseline*' = raw Logos features (no fine-tuning) for reference.
+#   baseline           = OLD extraction (logos_features); only loosely comparable to FT runs.
+#   baseline_endanchor = current extract_logos_features.py (end-anchored tail clip so long
+#                        ASL-Citizen videos aren't truncated). THIS is the matched reference
+#                        for run1/2/3, since they re-extract with the same script.
+# Bulky re-extracted features live on scratch-shared; baseline raw features stay in $HOME.
 declare -A FEATS=(
   [baseline]=$HOME/ASL_Citizen/logos_features
-  [run2]=$HOME/ASL_Citizen/logos_features_run2
-  [run3]=$HOME/ASL_Citizen/logos_features_run3
-  [run1]=$HOME/ASL_Citizen/logos_features_run1
+  [baseline_endanchor]=$HOME/ASL_Citizen/logos_features_endanchor
+  [run2]=/scratch-shared/psobecki/ASL_Citizen/logos_features_run2
+  [run3]=/scratch-shared/psobecki/ASL_Citizen/logos_features_run3
+  [run1]=/scratch-shared/psobecki/ASL_Citizen/logos_features_run1
 )
 
-for name in baseline run2 run3 run1; do
+for name in baseline baseline_endanchor run2 run3 run1; do
   dir=${FEATS[$name]}
   if [ ! -d "$dir" ]; then
     echo "== skip $name (no features at $dir) =="
@@ -42,11 +48,13 @@ for name in baseline run2 run3 run1; do
   echo "--- Eval A (raw NN retrieval) ---"
   python eval_asl_citizen_retrieval.py \
       --feature_name $name --feature_dir $dir --splits_dir $SPLITS \
+      --mlflow --mlflow_experiment asl-citizen-feature-eval --mlflow_run_name $name \
       --output_json runs/asl_ft_eval/${name}_evalA.json
 
   echo "--- Eval B (linear probe) ---"
   python eval_asl_citizen_linear_probe.py \
       --feature_name $name --feature_dir $dir --splits_dir $SPLITS \
+      --mlflow --mlflow_experiment asl-citizen-feature-eval --mlflow_run_name $name \
       --output_json runs/asl_ft_eval/${name}_evalB.json
 done
 

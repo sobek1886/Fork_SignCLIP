@@ -165,6 +165,11 @@ def main():
     ap.add_argument("--device", type=str,
                     default="cuda" if torch.cuda.is_available() else "cpu")
     ap.add_argument("--output_json", type=Path, default=None)
+    ap.add_argument("--mlflow", action="store_true",
+                    help="Log metrics to MLflow (one run per feature set; evalB_ prefix)")
+    ap.add_argument("--mlflow_experiment", type=str, default="asl-citizen-feature-eval")
+    ap.add_argument("--mlflow_run_name", type=str, default=None,
+                    help="MLflow run name (default: --feature_name)")
     args = ap.parse_args()
 
     import eval_asl_citizen_retrieval as evalA
@@ -218,6 +223,19 @@ def main():
                          l2_normalize=args.l2_normalize)
 
     print_results(res, args.feature_name, feat_dim, n_gloss)
+
+    if args.mlflow:
+        from mlflow_eval_logging import log_eval_to_mlflow
+        log_eval_to_mlflow(
+            experiment=args.mlflow_experiment,
+            run_name=args.mlflow_run_name or args.feature_name,
+            prefix="evalB_",
+            metrics={"DCG": res["DCG"], "MRR": res["MRR"], "Rec@1": res["Rec@1"],
+                     "Rec@5": res["Rec@5"], "Rec@10": res["Rec@10"], "Rec@20": res["Rec@20"]},
+            params={"feature_dim": feat_dim, "n_gloss": n_gloss,
+                    "n_queries": res["n_queries"], "l2_normalize": args.l2_normalize,
+                    "probe_epochs": args.probe_epochs, "evalB_feature_dir": str(args.feature_dir)},
+        )
 
     if args.output_json:
         args.output_json.parent.mkdir(parents=True, exist_ok=True)

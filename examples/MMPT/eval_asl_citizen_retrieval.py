@@ -436,6 +436,11 @@ def main():
                              f"(default: {DEFAULT_POSE_DIR})")
     parser.add_argument("--output_json", type=Path, default=None,
                         help="If set, write the metrics dict to this JSON file")
+    parser.add_argument("--mlflow", action="store_true",
+                        help="Log metrics to MLflow (one run per feature set; evalA_ prefix)")
+    parser.add_argument("--mlflow_experiment", type=str, default="asl-citizen-feature-eval")
+    parser.add_argument("--mlflow_run_name", type=str, default=None,
+                        help="MLflow run name (default: --feature_name)")
     args = parser.parse_args()
 
     if args.feature_dir is None:
@@ -479,6 +484,19 @@ def main():
                    device=device, batch_size=args.batch_size)
 
     print_results(res, args.feature_name, feat_dim, weighted=args.weighted)
+
+    if args.mlflow:
+        from mlflow_eval_logging import log_eval_to_mlflow
+        log_eval_to_mlflow(
+            experiment=args.mlflow_experiment,
+            run_name=args.mlflow_run_name or args.feature_name,
+            prefix="evalA_",
+            metrics={"DCG": res["DCG"], "MRR": res["MRR"], "Rec@1": res["Rec@1"],
+                     "Rec@5": res["Rec@5"], "Rec@10": res["Rec@10"], "Rec@20": res["Rec@20"]},
+            params={"feature_dim": feat_dim, "n_gallery": res["n_gallery"],
+                    "n_glosses": res["n_glosses"], "n_queries": res["n_queries"],
+                    "weighted": args.weighted, "evalA_feature_dir": str(args.feature_dir)},
+        )
 
     if args.output_json:
         args.output_json.parent.mkdir(parents=True, exist_ok=True)
