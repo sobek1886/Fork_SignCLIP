@@ -38,17 +38,11 @@ for name in signclip_scratch signclip_aug_ft; do
   echo "--- export pooled_video embeddings ---"
   python export_signclip_features.py --config $cfg --output_dir $featdir --splits train test
 
-  echo "--- Eval A (raw NN retrieval) ---"
-  python eval_asl_citizen_retrieval.py \
+  echo "--- Eval A + B (one MLflow run) ---"
+  python eval_asl_citizen_features.py \
       --feature_name $name --feature_dir $featdir --splits_dir $SPLITS \
       --mlflow --mlflow_experiment asl-citizen-feature-eval --mlflow_run_name $name \
-      --output_json runs/asl_ft_eval/${name}_evalA.json
-
-  echo "--- Eval B (linear probe) ---"
-  python eval_asl_citizen_linear_probe.py \
-      --feature_name $name --feature_dir $featdir --splits_dir $SPLITS \
-      --mlflow --mlflow_experiment asl-citizen-feature-eval --mlflow_run_name $name \
-      --output_json runs/asl_ft_eval/${name}_evalB.json
+      --output_json runs/asl_ft_eval/${name}.json
 done
 
 echo ""

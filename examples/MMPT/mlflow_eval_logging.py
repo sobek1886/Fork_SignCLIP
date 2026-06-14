@@ -69,3 +69,53 @@ def log_eval_to_mlflow(experiment, run_name, prefix, metrics,
     except Exception as exc:
         print(f"[MLflow] WARNING: could not log to MLflow: {exc}")
         return False
+
+
+def log_evals_to_mlflow(experiment, run_name, groups,
+                        params=None, tags=None, tracking_uri=TRACKING_URI):
+    """Log several eval metric groups into ONE fresh MLflow run (A + B together).
+
+    Args:
+        groups: dict of prefix -> metrics dict, e.g.
+                {"evalA_": {"DCG": ..., "Rec@1": ...}, "evalB_": {...}}.
+    Always starts a FRESH run (no reuse/overwrite). Returns True on success.
+    """
+    try:
+        import mlflow
+    except ImportError:
+        print("[MLflow] mlflow not installed; skipping logging.")
+        return False
+
+    try:
+        mlflow.set_tracking_uri(tracking_uri)
+        mlflow.set_experiment(experiment)
+
+        numeric = {}
+        eval_types = []
+        for prefix, metrics in groups.items():
+            for k, v in metrics.items():
+                try:
+                    numeric[_sanitize(prefix + k)] = float(v)
+                except (TypeError, ValueError):
+                    continue
+            et = prefix.replace("eval", "").rstrip("_")
+            if et:
+                eval_types.append(et)
+
+        with mlflow.start_run(run_name=run_name):
+            mlflow.log_metrics(numeric)
+            if params:
+                mlflow.log_params({k: str(v) for k, v in params.items()})
+            base_tags = {"eval_type": "+".join(eval_types) or "?",
+                         "node": os.environ.get("SLURMD_NODENAME", "unknown"),
+                         "job_id": os.environ.get("SLURM_JOB_ID", "unknown")}
+            if tags:
+                base_tags.update({k: str(v) for k, v in tags.items()})
+            mlflow.set_tags(base_tags)
+
+        print(f"[MLflow] logged run '{run_name}' (evals {'+'.join(eval_types)}) "
+              f"in '{experiment}': " + ", ".join(f"{k}={v:.2f}" for k, v in numeric.items()))
+        return True
+    except Exception as exc:
+        print(f"[MLflow] WARNING: could not log to MLflow: {exc}")
+        return False
