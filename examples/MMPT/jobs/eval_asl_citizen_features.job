@@ -35,9 +35,11 @@ declare -A FEATS=(
   [run2]=/scratch-shared/psobecki/ASL_Citizen/logos_features_run2
   [run3]=/scratch-shared/psobecki/ASL_Citizen/logos_features_run3
   [run1]=/scratch-shared/psobecki/ASL_Citizen/logos_features_run1
+  [run1_glasses]=/scratch-shared/psobecki/ASL_Citizen/logos_features_run1_glasses
+  [run1_shirt1]=/scratch-shared/psobecki/ASL_Citizen/logos_features_run1_shirt1
 )
 
-for name in baseline baseline_endanchor baseline_native run2 run3 run1; do
+for name in baseline baseline_endanchor baseline_native run2 run3 run1 run1_glasses run1_shirt1; do
   dir=${FEATS[$name]}
   if [ ! -d "$dir" ]; then
     echo "== skip $name (no features at $dir) =="
