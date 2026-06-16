@@ -28,6 +28,8 @@ mkdir -p runs/asl_ft_eval
 #                        ASL-Citizen videos aren't truncated). THIS is the matched reference
 #                        for run1/2/3, since they re-extract with the same script.
 # Bulky re-extracted features live on scratch-shared; baseline raw features stay in $HOME.
+# Headline comparison set. Per-augmentation ablations (run1_glasses/shirt1/signerswap/skin)
+# are evaluated separately by jobs/eval_asl_citizen_ablations.job.
 declare -A FEATS=(
   [baseline]=$HOME/ASL_Citizen/logos_features
   [baseline_endanchor]=$HOME/ASL_Citizen/logos_features_endanchor
@@ -35,11 +37,9 @@ declare -A FEATS=(
   [run2]=/scratch-shared/psobecki/ASL_Citizen/logos_features_run2
   [run3]=/scratch-shared/psobecki/ASL_Citizen/logos_features_run3
   [run1]=/scratch-shared/psobecki/ASL_Citizen/logos_features_run1
-  [run1_glasses]=/scratch-shared/psobecki/ASL_Citizen/logos_features_run1_glasses
-  [run1_shirt1]=/scratch-shared/psobecki/ASL_Citizen/logos_features_run1_shirt1
 )
 
-for name in baseline baseline_endanchor baseline_native run2 run3 run1 run1_glasses run1_shirt1; do
+for name in baseline baseline_endanchor baseline_native run2 run3 run1; do
   dir=${FEATS[$name]}
   if [ ! -d "$dir" ]; then
     echo "== skip $name (no features at $dir) =="

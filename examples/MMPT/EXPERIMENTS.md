@@ -33,6 +33,16 @@ Results live in MLflow:
   - → `MMPT`: `eval_asl_citizen_features.py`, `eval_asl_citizen_linear_probe.py`,
     `eval_asl_citizen_retrieval.py`, `mlflow_eval_logging.py`, `export_signclip_features.py`,
     `jobs/eval_asl_citizen_features.job`, `jobs/eval_signclip_features.job`
+- [ ] Regenerate `splits_aug` with all 4 variants (needed by run3 / aug-as-data):
+  ```
+  python generate_asl_citizen_aug_splits.py \
+    --train_csv $HOME/ASL_Citizen/splits/train.csv \
+    --val_csv   $HOME/ASL_Citizen/splits/val.csv \
+    --test_csv  $HOME/ASL_Citizen/splits/test.csv \
+    --aug_video_list $HOME/ASL_Citizen/aug_selection/aug_video_list.txt \
+    --variants glasses shirt_1 signer_swap skin_mst_diffusion \
+    --output_dir $HOME/ASL_Citizen/splits_aug
+  ```
 - [x] `mlflow` present in fork_mmaction2 venv — confirmed (3.13.0).
 - [x] **numpy pinned `<2`** in fork_mmaction2 venv — mlflow install had bumped it to 2.4.6, which broke
       torch's numpy bridge (`RuntimeError: Numpy is not available`). `pip install "numpy<2"` fixes it.
@@ -65,18 +75,24 @@ Each job: train (→MLflow) then re-extract features with `--preproc logos_nativ
 - [ ] `sbatch ft_asl_citizen_run2_baseline.job`              → CE, original           → `logos_features_run2`
 - [ ] `sbatch ft_asl_citizen_run3_augdata.job`               → CE, original+aug        → `logos_features_run3`
 - [ ] `sbatch ft_asl_citizen_run1_consistency.job`           → CE + consist (glasses+shirt1) → `logos_features_run1`
-- [ ] `sbatch ft_asl_citizen_run1_consistency_glasses.job`   → CE + consist (glasses)  → `logos_features_run1_glasses`
-- [ ] `sbatch ft_asl_citizen_run1_consistency_shirt1.job`    → CE + consist (shirt1)   → `logos_features_run1_shirt1`
-- [ ] (later) skin tone: sync `skin_mst_diffusion` frames, add to AUG_NAMES (combined) + a `run1_skin` job
+- [ ] `sbatch ft_asl_citizen_run1_consistency_glasses.job`   → consist (glasses)       → `logos_features_run1_glasses`
+- [ ] `sbatch ft_asl_citizen_run1_consistency_shirt1.job`    → consist (shirt_1)       → `logos_features_run1_shirt1`
+- [ ] `sbatch ft_asl_citizen_run1_consistency_signerswap.job`→ consist (signer_swap)   → `logos_features_run1_signerswap`
+- [ ] `sbatch ft_asl_citizen_run1_consistency_skin.job`      → consist (skin_mst_diffusion) → `logos_features_run1_skin`
 - [ ] (optional) run4 supcon: add `--lambda_supcon 0.1` (needs class-balanced sampling to help)
+
+4 augmentation variants now: glasses, shirt_1, signer_swap, skin_mst_diffusion. Combined run1 + run3
+use all 4 (`--aug_names`); the four `run1_*` jobs isolate each.
 
 Note: each is an A100 job up to 36 h — check the concurrent-GPU/QOS limit; stagger if needed.
 
 ## 3. Evaluate everything (MMPT; re-runnable, skips dirs not ready)
 
-- [ ] `sbatch jobs/eval_asl_citizen_features.job`
-      → A+B (one MLflow run each) for: baseline / baseline_endanchor / **baseline_native** /
-        run2 / run3 / run1 / run1_glasses / run1_shirt1
+- [ ] `sbatch jobs/eval_asl_citizen_features.job`   → headline set: baseline / baseline_endanchor /
+      **baseline_native** / run2 / run3 / run1  (A+B, one MLflow run each)
+- [ ] `sbatch jobs/eval_asl_citizen_ablations.job` → ablations: run1_glasses / run1_shirt1 /
+      run1_signerswap / run1_skin  (A+B, one MLflow run each)
+- Both use parallel `.npy` loading (`--load_workers 32`, bump to 64 if scratch-shared is slow).
 
 ## 4. Escalate to full FT (only runs that show signal in step 3)
 

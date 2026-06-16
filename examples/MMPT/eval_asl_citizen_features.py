@@ -56,6 +56,8 @@ def main():
     ap.add_argument("--probe_batch_size", type=int, default=1024)
     ap.add_argument("--max_gallery", type=int, default=None)
     ap.add_argument("--max_queries", type=int, default=None)
+    ap.add_argument("--load_workers", type=int, default=32,
+                    help="threads for parallel .npy loading (scratch-shared is I/O-latency bound)")
     ap.add_argument("--device", type=str,
                     default="cuda" if torch.cuda.is_available() else "cpu")
     ap.add_argument("--output_json", type=Path, default=None)
@@ -83,10 +85,10 @@ def main():
     query_recs = load_metadata(args.splits_dir, args.query_split)
     gallery_feats, gallery_glosses = load_features(
         gallery_recs, args.feature_dir, args.max_gallery,
-        desc=f"Loading gallery ({args.gallery_split})")
+        desc=f"Loading gallery ({args.gallery_split})", workers=args.load_workers)
     query_feats, query_glosses = load_features(
         query_recs, args.feature_dir, args.max_queries,
-        desc=f"Loading queries ({args.query_split})")
+        desc=f"Loading queries ({args.query_split})", workers=args.load_workers)
     feat_dim = gallery_feats.shape[1]
 
     # ── Eval A: raw NN retrieval ──────────────────────────────────────────────
