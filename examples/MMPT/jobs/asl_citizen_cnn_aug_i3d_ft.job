@@ -1,0 +1,27 @@
+#!/bin/bash
+# Stage 2b: I3D fine-tune WITH augmentation — resumes the scratch I3D baseline, trains on
+# splits_aug (originals + glasses/shirt_1/signer_swap/skin as extra video-text pairs).
+# Augmentation delta = this vs asl_citizen_cnn_i3d_ft (same recipe, original splits).
+# Needs BOTH the scratch baseline AND the augmented I3D features:
+#   --dependency=afterok:<scratch_i3d>:<i3d_extract_aug>
+
+#SBATCH --partition=gpu_a100
+#SBATCH --gpus=1
+#SBATCH --job-name=asl_aug_i3d_ft
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=5
+#SBATCH --time=12:00:00
+#SBATCH --output=jobs/output/slurm_%x_%A.txt
+
+module purge
+module load 2025
+cd $HOME/Fork_SignCLIP/examples/MMPT
+source .venv/bin/activate
+export PYTHONPATH=$HOME/Fork_SignCLIP:$PYTHONPATH
+export PATH="$HOME/Fork_SignCLIP/examples/MMPT/.venv/bin:$PATH"
+
+srun python locallaunch.py projects/retri/signclip_asl/asl_citizen_cnn_aug_i3d_ft.yaml --jobtype local_single
+
+python mmpt_cli/predict.py \
+    projects/retri/signclip_asl/test_asl_citizen_cnn_aug_i3d_ft.yaml \
+    --quiet

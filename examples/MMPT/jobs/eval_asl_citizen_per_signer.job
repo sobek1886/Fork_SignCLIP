@@ -1,0 +1,44 @@
+#!/bin/bash
+# Per-signer retrieval breakdown — is appearance/signer the bottleneck for each feature set?
+# Runs eval_asl_citizen_per_signer.py on the key Logos sets + frozen I3D (weaker backbone,
+# more headroom). Writes per-signer CSVs + a summary (micro/macro Rec@1, std, min/max).
+# CPU is fine (one cosine matmul); matches the genoa eval setup.
+
+#SBATCH --partition=genoa
+#SBATCH --job-name=eval_per_signer
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=64
+#SBATCH --time=3:00:00
+#SBATCH --output=jobs/output/slurm_%x_%A.txt
+
+module purge
+module load 2025
+cd $HOME/Fork_SignCLIP/examples/MMPT
+source .venv/bin/activate
+export PYTHONPATH=$HOME/Fork_SignCLIP:$PYTHONPATH
+export PATH="$HOME/Fork_SignCLIP/examples/MMPT/.venv/bin:$PATH"
+
+SPLITS=$HOME/ASL_Citizen/splits
+mkdir -p runs/per_signer
+
+declare -A FEATS=(
+  [baseline_native]=/scratch-shared/psobecki/ASL_Citizen/logos_features_native
+  [run2]=/scratch-shared/psobecki/ASL_Citizen/logos_features_run2
+  [i3d]=$HOME/ASL_Citizen/i3d_features
+  [pose]=$HOME/ASL_Citizen/mediapipe_features   # appearance-free control (keypoints)
+)
+
+for name in baseline_native run2 i3d pose; do
+  dir=${FEATS[$name]}
+  if [ ! -d "$dir" ]; then echo "== skip $name (no $dir) =="; continue; fi
+  echo ""
+  echo "########## per-signer: $name ##########"
+  python eval_asl_citizen_per_signer.py \
+      --feature_dir $dir --feature_name $name --splits_dir $SPLITS \
+      --device cpu --output_csv runs/per_signer/${name}.csv
+done
+
+echo ""
+echo "Done. Per-signer CSVs + *_summary.json in runs/per_signer/"
+echo "Compare 'per-signer std' and 'min signer' across feature sets:"
+echo "  high std / low tail => appearance is a lever; uniform/high => already generalises."

@@ -109,6 +109,22 @@ use all 4 (`--aug_names`); the four `run1_*` jobs isolate each.
 
 Note: each is an A100 job up to 36 h — check the concurrent-GPU/QOS limit; stagger if needed.
 
+## 2b. Method variants (direct224; see backbone_ft_methods.tex)
+
+Stride bug fixed: signer_swap/skin are stride-2 (half frames) → trainer auto-uses interval 1 for
+them (per-variant). **Re-run** the affected ones (run1, run3, run1_signerswap, run1_skin).
+
+- [ ] `sbatch ft_asl_citizen_run2_mid.job`        → middle-ground (unfreeze 6 + LLRD), CE   → `logos_features_run2_mid`
+- [ ] `sbatch ft_asl_citizen_run1_mid.job`        → middle-ground (unfreeze 6 + LLRD), consist → `logos_features_run1_mid`
+- [ ] `sbatch ft_asl_citizen_twostage.job`        → resume run2_direct224, +consist, lr 1e-5 → `logos_features_twostage`  (needs run2_direct224 first)
+- [ ] `sbatch ft_asl_citizen_run1_clscontrast.job`→ CE + instance SupCon (InfoNCE+negatives) on CLS → `logos_features_run1_clscontrast`
+- (full FT: deferred — edit a job header `UNFREEZE=16 LR=1e-5 LLRD=0.75 EPOCHS=15 --time=24:00:00`)
+
+All four are in `jobs/eval_asl_citizen_features.job` (skips dirs not ready). LaTeX writeup of these
+methods + how they differ from the frozen-feature SignCLIP approach: `backbone_ft_methods.tex`.
+Note (e): the MViT CLS token is *already* the representation everywhere — clscontrast adds the
+contrastive objective (negatives + temperature) on it, vs run1's cosine-only consistency.
+
 ## 3. Evaluate everything (MMPT; re-runnable, skips dirs not ready)
 
 - [ ] `sbatch jobs/eval_asl_citizen_features.job`   → headline set: baseline / baseline_endanchor /

@@ -1,0 +1,117 @@
+% ============================================================================
+% Backbone fine-tuning for appearance-invariant ISLR on ASL-Citizen.
+% Self-contained methods section — \input or paste into the thesis.
+% Requires amsmath.
+% ============================================================================
+
+\section{Fine-tuning the sign representation backbone}
+\label{sec:backbone-ft}
+
+\paragraph{Motivation and departure from prior approaches.}
+Our earlier experiments (Sec.~\ref{tab:asl_citizen_retrieval}) trained a SignCLIP
+video--text model \emph{on top of frozen} MViTv2-S ``Logos'' features: the visual backbone
+was fixed and only a temporal aggregator plus a text encoder were learned with a
+video--text contrastive objective. Two observations motivate a different strategy here.
+First, the frozen Logos features are already highly discriminative on ASL-Citizen
+(video-to-video nearest-neighbour retrieval reaches Rec@1${\approx}0.82$ with \emph{no}
+training), indicating that the representational headroom lies in the \emph{backbone}, not in
+a head on top of it. Second, our goal is to make the representation invariant to
+\emph{appearance and signer identity}; this requires gradients to reach the visual features
+themselves, which is impossible when the backbone is frozen. We therefore fine-tune the
+MViTv2-S backbone directly with a sign-classification objective and an appearance-invariance
+term, and evaluate the resulting \emph{frozen} features with the SignRep dictionary-retrieval
+protocol (nearest-neighbour retrieval, ``Eval~A'') and a linear probe (``Eval~B'').
+
+\paragraph{Notation.}
+Let $x$ denote a $32$-frame input clip and $f_\theta$ the MViTv2-S backbone. The backbone
+emits a class (\textsc{cls}) token $z = f_\theta(x) \in \mathbb{R}^{768}$, which is the global
+representation used \emph{throughout} our pipeline (feature extraction, the classifier, and
+all invariance objectives operate on $z$). A linear head $g_\phi$ maps $z$ to logits over the
+$C{=}2731$ ASL-Citizen glosses. For a training video $i$ with gloss $y_i$ we additionally have
+a set of appearance-augmented copies $\{x_i^{a}\}_{a \in A_i}$, where each augmentation
+$a \in \mathcal{A} = \{\textsc{glasses},\textsc{shirt},\textsc{signer\_swap},\textsc{skin}\}$
+alters appearance while preserving the sign (gloss). We write $z_i = f_\theta(x_i)$ and
+$z_i^{a} = f_\theta(x_i^{a})$.
+
+\paragraph{Base objective.}
+All runs minimise a cross-entropy classification loss on the gloss labels,
+\begin{equation}
+\mathcal{L}_{\mathrm{CE}} = \mathrm{CE}\big(g_\phi(z),\, y\big),
+\end{equation}
+optionally combined with an \emph{appearance-consistency} term that pulls a video's original
+representation toward those of its augmentations,
+\begin{equation}
+\mathcal{L}_{\mathrm{cons}} =
+\frac{1}{|\mathcal{P}|}\!\!\sum_{(i,a)\in\mathcal{P}}\!\!\big(1 - \cos(z_i,\, z_i^{a})\big),
+\qquad
+\mathcal{L} = \mathcal{L}_{\mathrm{CE}} + \lambda\,\mathcal{L}_{\mathrm{cons}},
+\label{eq:base}
+\end{equation}
+where $\mathcal{P}$ is the set of (original, augmentation) pairs present in the batch and
+$\lambda$ weights the invariance term. This decomposes the design into three controls:
+\emph{(i)}~CE on originals only (does fine-tuning the backbone help at all?), \emph{(ii)}~CE on
+originals${+}$augmentations as additional data, and \emph{(iii)}~CE${+}\mathcal{L}_{\mathrm{cons}}$
+(does \emph{explicitly} enforcing invariance help beyond merely seeing the augmentations?).
+
+\subsection{Fine-tuning depth: partial, middle-ground, and full}
+\label{sec:unfreeze}
+MViTv2-S comprises $L{=}16$ transformer blocks in four stages. We control how much of the
+backbone adapts by unfreezing only the top $k$ blocks (plus the final norm and the head),
+keeping the lower $L{-}k$ blocks frozen at their pretrained Logos weights:
+\begin{itemize}
+  \item \textbf{Partial} ($k{=}2$): only the final stage adapts; the representation stays close
+  to the pretrained features. Cheap and low-risk, but limited capacity to instil invariance.
+  \item \textbf{Middle-ground} ($k{=}6$): the final stage plus part of the main stage adapt,
+  with \emph{layer-wise learning-rate decay} (LLRD): block $\ell$ uses
+  $\eta_\ell = \eta_0\,\gamma^{\,L-\ell}$ with decay $\gamma{=}0.75$, so deeper blocks adapt
+  faster while early blocks barely move. This trades capacity against compute and the risk of
+  catastrophic forgetting.
+  \item \textbf{Full} ($k{=}L$): the whole backbone is fine-tuned (LLRD, low base LR). Maximum
+  capacity, highest cost and forgetting risk.
+\end{itemize}
+This differs from the frozen-backbone SignCLIP setup, where $k{=}0$ by construction.
+
+\subsection{Two-stage training}
+\label{sec:twostage}
+This recipe mirrors the schedule that gave our best frozen-feature SignCLIP result, where the
+augmentation benefit only materialised when fine-tuning resumed an already-\emph{converged}
+baseline rather than starting from scratch. We transpose it to the backbone:
+\begin{enumerate}
+  \item \textbf{Stage~1}: fine-tune from the Logos initialisation with $\mathcal{L}_{\mathrm{CE}}$
+  on the original videos until convergence (validation-selected checkpoint $\theta^{(1)}$).
+  \item \textbf{Stage~2}: \emph{resume} $\theta^{(1)}$ (backbone \emph{and} head), reset the
+  optimiser, lower the learning rate by $100\times$, and continue with
+  $\mathcal{L}_{\mathrm{CE}}+\lambda\mathcal{L}_{\mathrm{cons}}$ on originals${+}$augmentations.
+\end{enumerate}
+The hypothesis is that, once the classifier and features have stabilised on the in-domain gloss
+distribution, the augmentations act on a settled target and the invariance term can take effect
+at low LR --- whereas adding it from the Logos initialisation (our single-stage ``run~1'')
+competes with the larger gradients of initial adaptation. This is the backbone analogue of the
+text-anchor stabilisation argument from the SignCLIP experiments.
+
+\subsection{Contrastive learning on the CLS token}
+\label{sec:clscontrast}
+The consistency term in Eq.~\eqref{eq:base} is a \emph{positive-only} pull: it aligns each
+original with its augmentations but never repels different signs. Following our supervisor's
+suggestion we add a proper contrastive objective on the \textsc{cls} token, in the supervised /
+instance form (SupCon). Treating a video and its augmentations as a positive set
+$P(u)=\{\,v \neq u : \mathrm{inst}(v)=\mathrm{inst}(u)\,\}$ (same source video) and all other
+clips in the batch as negatives, with $\ell_2$-normalised tokens and temperature $\tau$,
+\begin{equation}
+\mathcal{L}_{\mathrm{con}}^{\textsc{cls}} =
+\sum_{u}\frac{-1}{|P(u)|}\sum_{p\in P(u)}
+\log\frac{\exp(z_u\!\cdot z_p/\tau)}{\sum_{v\neq u}\exp(z_u\!\cdot z_v/\tau)} .
+\label{eq:supcon}
+\end{equation}
+Unlike $\mathcal{L}_{\mathrm{cons}}$, Eq.~\eqref{eq:supcon} includes \emph{negatives} and a
+temperature, so it shapes the geometry of the $z$-space (tightening appearance-invariant
+clusters while separating different videos) rather than only minimising a pairwise distance.
+We emphasise that the \textsc{cls} token is already the representation our pipeline uses --- the
+contribution here is the contrastive \emph{objective} applied to it, not a change of
+representation.
+
+\paragraph{Evaluation.}
+For every configuration we re-extract frozen $z$-features for all ASL-Citizen videos with the
+fine-tuned backbone and report (A) nearest-neighbour dictionary retrieval and (B) a linear
+probe, in both cases DCG, MRR and Rec@$\{1,5,10,20\}$ on the signer-disjoint test split. The
+matched no-fine-tuning reference is the same backbone evaluated with identical preprocessing.
