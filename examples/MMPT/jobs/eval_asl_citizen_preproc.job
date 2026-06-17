@@ -5,11 +5,10 @@
 #   frozen:  baseline_native (logos_native) | baseline_endanchor (direct224) | baseline_letterbox
 #   FT(CE):  run2 (logos_native)            | run2_direct224                 | run2_letterbox224
 
-#SBATCH --partition=gpu_a100
-#SBATCH --gpus=1
+#SBATCH --partition=rome
 #SBATCH --job-name=eval_asl_preproc
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=8
+#SBATCH --cpus-per-task=64
 #SBATCH --time=2:00:00
 #SBATCH --output=jobs/output/slurm_%x_%A.txt
 

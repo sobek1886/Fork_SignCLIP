@@ -4,11 +4,10 @@
 #   Eval B — linear probe                       (eval_asl_citizen_linear_probe.py, SignRep Table 3)
 # Run AFTER the ft_asl_citizen_run{1,2,3}_*.job jobs have re-extracted per-run features.
 
-#SBATCH --partition=gpu_a100
-#SBATCH --gpus=1
+#SBATCH --partition=genoa
 #SBATCH --job-name=eval_asl_feats
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=8
+#SBATCH --cpus-per-task=64
 #SBATCH --time=4:00:00
 #SBATCH --output=jobs/output/slurm_%x_%A.txt
 
