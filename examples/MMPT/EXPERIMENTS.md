@@ -68,6 +68,29 @@ Results live in MLflow:
 - [ ] SignCLIP control — `sbatch jobs/eval_signclip_features.job` (MMPT)
       → exports pooled_video for `signclip_scratch` + `signclip_aug_ft`, then A+B
 
+## 1b. Preprocessing comparison (decide the input pipeline before the full experiment)
+
+ASL-Citizen frames are 640×480 (4:3), not square. Three ways to map → 224×224:
+- **direct224** — resize whole frame to 224² (keeps all content, mild horizontal stretch).
+- **letterbox224** — resize long side→224 + grey-pad (keeps all, no distortion, smaller signer).
+- **logos_native** — resize-300 + pad + center-crop-224 (aspect-preserving but **clips hands at the
+  sides** on 4:3 — confirmed visually + worst in eval).
+
+Eval each both frozen (original ckpt) and after a baseline FT (CE, no aug). 3 of 6 cells already done.
+
+|              | frozen (no FT)                       | baseline FT (CE)              |
+|--------------|--------------------------------------|-------------------------------|
+| logos_native | `baseline_native`  ✅ (A81.4/B84.3)  | `run2`            ✅ (A85.5/B86.1) |
+| direct224    | `baseline_endanchor` ✅ (A83.0/B85.9)| `run2_direct224`    ← new      |
+| letterbox224 | `baseline_letterbox` ← new extract   | `run2_letterbox224` ← new      |
+
+- [ ] `sbatch extract_logos_features_letterbox_baseline.job`  (Fork_Logos) → `logos_features_letterbox`
+- [ ] `sbatch ft_asl_citizen_run2_direct224.job`              (Fork_Logos)
+- [ ] `sbatch ft_asl_citizen_run2_letterbox224.job`           (Fork_Logos)
+- [ ] `sbatch jobs/eval_asl_citizen_preproc.job`              (MMPT) → all 6, skips not-ready
+- [ ] **Decide the winner**, then make it the pipeline for the full experiment (defaults are still
+      `logos_native`; the comparison jobs set preproc explicitly so nothing else is disturbed).
+
 ## 2. Backbone fine-tuning — partial FT first (Fork_Logos)
 
 Each job: train (→MLflow) then re-extract features with `--preproc logos_native`.
