@@ -44,8 +44,10 @@ declare -A FEATS=(
   [run1_clscontrast]=/scratch-shared/psobecki/ASL_Citizen/logos_features_run1_clscontrast
 )
 
-for name in baseline baseline_endanchor baseline_native i3d run2 run3 run1 \
-            twostage run2_mid run1_mid run1_clscontrast; do
+# Only the runs that need (re)evaluating: run3/run1 re-extracted after the stride fix,
+# plus the method variants. Baselines/run2/i3d are unaffected and already in MLflow — add
+# them back here if you ever need to recompute. Absent dirs (e.g. still-training jobs) skip.
+for name in run3 run1 twostage run2_mid run1_mid run1_clscontrast; do
   dir=${FEATS[$name]}
   if [ ! -d "$dir" ]; then
     echo "== skip $name (no features at $dir) =="
