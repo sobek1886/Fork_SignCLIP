@@ -115,3 +115,34 @@ For every configuration we re-extract frozen $z$-features for all ASL-Citizen vi
 fine-tuned backbone and report (A) nearest-neighbour dictionary retrieval and (B) a linear
 probe, in both cases DCG, MRR and Rec@$\{1,5,10,20\}$ on the signer-disjoint test split. The
 matched no-fine-tuning reference is the same backbone evaluated with identical preprocessing.
+
+\subsection{Findings}
+\label{sec:backbone-ft-findings}
+Fine-tuning the backbone with cross-entropy improves over the matched no-fine-tuning reference,
+confirming that the representational headroom is in the backbone. However, the
+appearance-invariance interventions do \emph{not} improve in-domain ASL-Citizen recognition.
+\begin{itemize}
+  \item \textbf{Augmentation adds nothing.} CE on originals, CE on originals${+}$augmentations
+  (aug-as-data), and the four single-augmentation consistency variants
+  ($\textsc{glasses},\textsc{shirt},\textsc{signer\_swap},\textsc{skin}$) all cluster within
+  ${\approx}1$ point of one another on the headline retrieval metrics (Rec@1${\approx}85$--$86$).
+  This holds \emph{after} correcting a frame-rate (stride) mismatch in the
+  \textsc{signer\_swap}/\textsc{skin} augmentations, ruling out a data artefact: the corrected
+  variants tie with \textsc{glasses}/\textsc{shirt}.
+  \item \textbf{Consistency does not help, and hurts with capacity.} At the partial depth
+  ($k{=}2$) the single-stage consistency run is marginally below the CE and aug-as-data runs;
+  at the middle-ground depth ($k{=}6$) it degrades clearly --- the $k{=}6$ consistency run is the
+  weakest configuration overall (Eval~B Rec@1 ${\approx}82$ vs.\ ${\approx}86$ elsewhere), while
+  the $k{=}6$ \emph{CE-only} run is the \emph{strongest}. The invariance term competes with the
+  recognition objective, and the conflict grows as more of the backbone is allowed to move. The
+  two-stage schedule (Sec.~\ref{sec:twostage}) does not recover a benefit either.
+  \item \textbf{Depth, not invariance, is the lever.} The best in-domain result comes from plain
+  CE with a deeper unfreeze ($k{=}6$ with LLRD), not from any appearance-augmentation strategy.
+\end{itemize}
+We interpret this as the backbone already being appearance-robust on ASL-Citizen: although the
+test split is signer-disjoint, it shares the webcam / home-recording domain of the large
+multi-dataset pretraining (Logos${+}$AUTSL${+}$WLASL), so there is little appearance \emph{shift}
+for an invariance objective to exploit. A genuine test of appearance invariance therefore
+requires a \emph{cross-domain} evaluation (a different capture setup and signer population); the
+in-domain experiments here establish that the invariance objective is, at best, neutral, and is
+harmful once it is given enough trainable capacity to compete with recognition.

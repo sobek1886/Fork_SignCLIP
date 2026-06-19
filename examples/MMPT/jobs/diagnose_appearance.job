@@ -1,0 +1,72 @@
+#!/bin/bash
+# Appearance-invariance diagnostic on EXISTING features (no extraction, CPU only).
+# Does the consistency objective (run1) pull a sign's original and its signer_swap/skin
+# augmentation features closer than the no-FT baseline backbone? Decides whether the
+# bottom-unfreeze two-stage is worth building (see diagnose_appearance_invariance.py).
+#
+# Prereq: run Fork_Logos/extract_diag_aug_features.job first — it writes the signer/skin aug
+# features for BOTH checkpoints at matched stride (interval 1) into logos_features_{baseline,
+# run1}_aug, so the only difference here is the checkpoint. Originals are reused from each
+# run's existing feature dir.
+
+#SBATCH --partition=genoa
+#SBATCH --job-name=appearance_diag
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=32
+#SBATCH --time=00:30:00
+#SBATCH --output=jobs/output/slurm_%x_%A.txt
+
+module purge
+module load 2025
+cd $HOME/Fork_SignCLIP/examples/MMPT
+source .venv/bin/activate
+export PYTHONPATH=$HOME/Fork_SignCLIP:$PYTHONPATH
+export PATH="$HOME/Fork_SignCLIP/examples/MMPT/.venv/bin:$PATH"
+
+OUT=runs/appearance_diag
+mkdir -p $OUT
+
+declare -A ORIG=(
+  [baseline]=$HOME/ASL_Citizen/logos_features
+  [run1]=/scratch-shared/psobecki/ASL_Citizen/logos_features_run1
+)
+declare -A AUG=(
+  [baseline]=/scratch-shared/psobecki/ASL_Citizen/logos_features_baseline_aug
+  [run1]=/scratch-shared/psobecki/ASL_Citizen/logos_features_run1_aug
+)
+
+for name in baseline run1; do
+  echo ""; echo "########## diagnostic: $name ##########"
+  python diagnose_appearance_invariance.py \
+      --name $name \
+      --orig_dir ${ORIG[$name]} --aug_dir ${AUG[$name]} \
+      --augs signer_swap skin_mst_diffusion \
+      --output_json $OUT/${name}.json || echo "== $name failed (missing aug features?) =="
+done
+
+echo ""; echo "########## comparison ##########"
+python - <<'PY'
+import json, os
+d = "runs/appearance_diag"
+def load(n):
+    p = os.path.join(d, n + ".json")
+    return json.load(open(p)) if os.path.exists(p) else None
+b, r = load("baseline"), load("run1")
+if b and r:
+    print(f"matched cos (orig↔aug):  baseline {b['matched_mean']:.4f}  →  run1 {r['matched_mean']:.4f}"
+          f"   (Δ {r['matched_mean']-b['matched_mean']:+.4f})")
+    print(f"random cos (unrelated):  baseline {b['random_mean']:.4f}  →  run1 {r['random_mean']:.4f}")
+    print(f"gap matched−random:      baseline {b['gap_matched_minus_random']:.4f}  →  run1 {r['gap_matched_minus_random']:.4f}")
+    dlt = r['matched_mean'] - b['matched_mean']
+    print()
+    if dlt > 0.05:
+        print("→ run1 pulled appearance variants TOGETHER (top-2 sufficed). Since this did not")
+        print("  improve in-domain retrieval, appearance is NOT the in-domain bottleneck:")
+        print("  bottom-unfreeze would only matter cross-domain.")
+    else:
+        print("→ run1 barely moved matched cos vs baseline: top-only consistency could NOT remove")
+        print("  appearance (lower blocks frozen). Unfreezing the bottom blocks for the")
+        print("  consistency stage is the right next experiment.")
+else:
+    print("need both baseline.json and run1.json (a run may have failed for missing aug features)")
+PY

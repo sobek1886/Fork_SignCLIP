@@ -200,6 +200,8 @@ def load_features(
     desc: str = "Loading features",
     pose_dir: Path | None = None,
     workers: int = 32,
+    min_coverage: float = 0.0,
+    allow_partial: bool = False,
 ) -> tuple[np.ndarray, list[str]]:
     """Load .npy features, pool over time → (N, D) matrix + gloss list.
 
@@ -249,6 +251,23 @@ def load_features(
         raise RuntimeError(f"No features loaded from {feature_dir}")
     print(f"  {desc}: loaded {len(feats)} / {len(records)} "
           f"({missing} missing/invalid .npy, {workers} threads)")
+
+    # Completeness guard: a partially-extracted feature dir yields a SMALLER gallery/query
+    # set, which makes retrieval EASIER (fewer distractors) and the metrics non-comparable
+    # across runs. Refuse a partial load unless explicitly allowed.
+    coverage = len(feats) / max(1, len(records))
+    if coverage < 1.0:
+        bar = "!" * 70
+        msg = (f"INCOMPLETE FEATURE DIR — {desc}: loaded {len(feats)}/{len(records)} "
+               f"({100 * coverage:.1f}%) from {feature_dir}; {missing} .npy missing. "
+               f"A partial gallery/query makes the eval EASIER and NON-COMPARABLE to "
+               f"full-coverage runs.")
+        if coverage < min_coverage and not allow_partial:
+            raise RuntimeError(
+                f"\n{bar}\n{msg}\nRefusing: coverage {coverage:.1%} < required "
+                f"{min_coverage:.1%}. Wait for extraction to finish, or pass "
+                f"--allow_partial to evaluate the subset anyway.\n{bar}")
+        print(f"  {bar}\n  WARNING: {msg}\n  {bar}")
     return np.stack(feats), glosses
 
 
@@ -430,6 +449,12 @@ def main():
                         help=f"Directory with MediaPipe pose .npy files — "
                              f"only used when --weighted is set "
                              f"(default: {DEFAULT_POSE_DIR})")
+    parser.add_argument("--min_coverage", type=float, default=0.99,
+                        help="Fail if a feature dir is less than this fraction complete "
+                             "(guards against evaluating a still-extracting/partial dir, "
+                             "which gives an easier, non-comparable eval). Set 0 to disable.")
+    parser.add_argument("--allow_partial", action="store_true",
+                        help="Evaluate even an incomplete feature dir (warn instead of fail).")
     parser.add_argument("--output_json", type=Path, default=None,
                         help="If set, write the metrics dict to this JSON file")
     parser.add_argument("--mlflow", action="store_true",
@@ -469,10 +494,12 @@ def main():
 
     gallery_feats, gallery_glosses = load_features(
         gallery_recs, args.feature_dir, args.max_gallery,
-        desc=f"Loading gallery ({args.gallery_split})", pose_dir=pose_dir)
+        desc=f"Loading gallery ({args.gallery_split})", pose_dir=pose_dir,
+        min_coverage=args.min_coverage, allow_partial=args.allow_partial)
     query_feats, query_glosses = load_features(
         query_recs, args.feature_dir, args.max_queries,
-        desc=f"Loading queries ({args.query_split})", pose_dir=pose_dir)
+        desc=f"Loading queries ({args.query_split})", pose_dir=pose_dir,
+        min_coverage=args.min_coverage, allow_partial=args.allow_partial)
 
     feat_dim = gallery_feats.shape[1]
 

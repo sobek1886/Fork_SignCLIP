@@ -58,6 +58,12 @@ def main():
     ap.add_argument("--max_queries", type=int, default=None)
     ap.add_argument("--load_workers", type=int, default=32,
                     help="threads for parallel .npy loading (scratch-shared is I/O-latency bound)")
+    ap.add_argument("--min_coverage", type=float, default=0.99,
+                    help="Fail if the feature dir is less than this fraction complete — guards "
+                         "against evaluating a still-extracting/partial dir (smaller gallery = "
+                         "easier, non-comparable eval). Set 0 to disable.")
+    ap.add_argument("--allow_partial", action="store_true",
+                    help="Evaluate even an incomplete feature dir (warn instead of fail).")
     ap.add_argument("--device", type=str,
                     default="cuda" if torch.cuda.is_available() else "cpu")
     ap.add_argument("--output_json", type=Path, default=None)
@@ -85,10 +91,12 @@ def main():
     query_recs = load_metadata(args.splits_dir, args.query_split)
     gallery_feats, gallery_glosses = load_features(
         gallery_recs, args.feature_dir, args.max_gallery,
-        desc=f"Loading gallery ({args.gallery_split})", workers=args.load_workers)
+        desc=f"Loading gallery ({args.gallery_split})", workers=args.load_workers,
+        min_coverage=args.min_coverage, allow_partial=args.allow_partial)
     query_feats, query_glosses = load_features(
         query_recs, args.feature_dir, args.max_queries,
-        desc=f"Loading queries ({args.query_split})", workers=args.load_workers)
+        desc=f"Loading queries ({args.query_split})", workers=args.load_workers,
+        min_coverage=args.min_coverage, allow_partial=args.allow_partial)
     feat_dim = gallery_feats.shape[1]
 
     # ── Eval A: raw NN retrieval ──────────────────────────────────────────────
