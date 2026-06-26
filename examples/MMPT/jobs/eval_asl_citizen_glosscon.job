@@ -1,0 +1,43 @@
+#!/bin/bash
+# Standalone eval for the FULL GLOSSCON run only (full unfreeze + gloss-level SupCon on the CLS
+# token, batch 24, grad checkpointing). Same methodology as eval_asl_citizen_features.job:
+#   Eval A — raw video-to-video NN retrieval   (eval_asl_citizen_retrieval.py,    SignRep Table 4)
+#   Eval B — linear probe                       (eval_asl_citizen_linear_probe.py, SignRep Table 3)
+# both driven by eval_asl_citizen_features.py in a single MLflow run. Split out so glosscon can be
+# (re)evaluated on its own without touching the other runs' MLflow entries.
+# Run AFTER ft_asl_citizen_run_full_glosscon.job has re-extracted its features.
+
+#SBATCH --partition=genoa
+#SBATCH --job-name=eval_asl_glosscon
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=64
+#SBATCH --time=1:30:00
+#SBATCH --output=jobs/output/slurm_%x_%A.txt
+
+module purge
+module load 2025
+cd $HOME/Fork_SignCLIP/examples/MMPT
+source .venv/bin/activate
+export PYTHONPATH=$HOME/Fork_SignCLIP:$PYTHONPATH
+export PATH="$HOME/Fork_SignCLIP/examples/MMPT/.venv/bin:$PATH"
+
+SPLITS=$HOME/ASL_Citizen/splits
+mkdir -p runs/asl_ft_eval
+
+NAME=run_full_glosscon
+DIR=/scratch-shared/psobecki/ASL_Citizen/logos_features_run_full_glosscon
+
+if [ ! -d "$DIR" ]; then
+  echo "ERROR: no features at $DIR — run ft_asl_citizen_run_full_glosscon.job first." >&2
+  exit 1
+fi
+
+echo "########## $NAME : $DIR ##########"
+echo "--- Eval A (retrieval) + B (linear probe), one MLflow run ---"
+python eval_asl_citizen_features.py \
+    --feature_name $NAME --feature_dir $DIR --splits_dir $SPLITS \
+    --mlflow --mlflow_experiment asl-citizen-feature-eval --mlflow_run_name $NAME \
+    --output_json runs/asl_ft_eval/${NAME}.json
+
+echo ""
+echo "Done. Metrics in runs/asl_ft_eval/${NAME}.json and MLflow experiment 'asl-citizen-feature-eval'."

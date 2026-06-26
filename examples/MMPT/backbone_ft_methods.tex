@@ -110,6 +110,51 @@ We emphasise that the \textsc{cls} token is already the representation our pipel
 contribution here is the contrastive \emph{objective} applied to it, not a change of
 representation.
 
+\subsection{Output-consistency and adversarial signer-invariance (SDDA)}
+\label{sec:sdda}
+Following the SDDA method of \citet{fu2024sdda}, we add two further invariance terms that act on
+the \emph{prediction} and through a \emph{domain adversary} rather than directly on the feature
+geometry. Both operate on the same (original, augmentation) pairs $\mathcal{P}$ as
+Eq.~\eqref{eq:base}, and complement the feature-space terms above.
+
+\paragraph{Output-distribution consistency.}
+Rather than pulling features together, we regularise the classifier's predictive distribution so
+that an augmentation yields the same gloss posterior as its original. With
+$p_i = \mathrm{softmax}(g_\phi(z_i))$ and $p_i^{a} = \mathrm{softmax}(g_\phi(z_i^{a}))$,
+\begin{equation}
+\mathcal{L}_{\mathrm{KL}} =
+\frac{1}{|\mathcal{P}|}\!\!\sum_{(i,a)\in\mathcal{P}}\!\!\mathrm{KL}\big(p_i \,\big\|\, p_i^{a}\big).
+\label{eq:sdda-kl}
+\end{equation}
+The SLT original sums a per-token KL over the decoded sentence; for our single-gloss classifier
+this reduces to a single KL over the $C$-way gloss posterior.
+
+\paragraph{Adversarial discrimination.}
+A small domain discriminator $D$ is trained to tell originals from augmentations from the
+\textsc{cls} token, while a \emph{gradient-reversal layer} (GRL, \citet{ganin2015}) trains the
+backbone to \emph{fool} it, so that $z$ carries no original-vs-augmentation (appearance)
+information:
+\begin{equation}
+\mathcal{L}_{d} = \mathrm{CE}\big(D(\mathrm{GRL}_\eta(z)),\, d\big),
+\qquad d = 1\ (\text{orig}),\; 0\ (\text{aug}),
+\label{eq:sdda-disc}
+\end{equation}
+where $\mathrm{GRL}_\eta$ is the identity in the forward pass and negates (and scales by $\eta$)
+the gradient in the backward pass; $D$ is a two-layer MLP, discarded after training (the frozen
+features used for evaluation are unchanged). The combined objective is
+\begin{equation}
+\mathcal{L} = \mathcal{L}_{\mathrm{CE}}
+            + \alpha\,\mathcal{L}_{\mathrm{KL}}
+            + \beta\,\mathcal{L}_{d},
+\qquad \alpha = 1.0,\; \beta = 10^{-4},
+\label{eq:sdda-total}
+\end{equation}
+matching the paper's weights. Unlike $\mathcal{L}_{\mathrm{cons}}$ (a positive-only pull on
+features) and $\mathcal{L}_{\mathrm{con}}^{\textsc{cls}}$ (a contrastive reshaping of the
+$z$-geometry), these act on the \emph{output} ($\mathcal{L}_{\mathrm{KL}}$) and via an
+\emph{adversary} ($\mathcal{L}_d$), giving a complementary route to appearance/signer invariance;
+$\mathcal{L}_{\mathrm{KL}}$ and $\mathcal{L}_d$ can also be enabled independently for ablation.
+
 \paragraph{Evaluation.}
 For every configuration we re-extract frozen $z$-features for all ASL-Citizen videos with the
 fine-tuned backbone and report (A) nearest-neighbour dictionary retrieval and (B) a linear

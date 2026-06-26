@@ -68,6 +68,51 @@ Key properties:
 
 ---
 
+## 2b. Linear probe (Eval B / SignRep Table 3) — the *right* thing to compare V2T against
+
+`eval_asl_citizen_linear_probe.py` trains a single `Linear(768 -> n_gloss)` classifier on
+the **frozen** train features, then ranks the ~2731 gloss classes by logit for each test
+video:
+```python
+probe = nn.Linear(D, n_gloss)            # one weight ROW per gloss
+...
+logits = probe(xb)                       # (b, n_gloss): score of each gloss
+gt     = logits.gather(1, yb)            # logit of the CORRECT gloss
+ranks  = (logits > gt).sum(dim=1)        # how many glosses outscore it
+```
+
+Structurally this is **closer to V2T than Eval A is**: the gallery is **one learned vector
+per gloss** (the classifier weight row), reached through a **trained mapping** — exactly
+V2T's shape. Eval A, by contrast, keeps ~15 video references per gloss and matches the best
+one (`amax`).
+
+But it is **not** cross-modal and **not** open-vocabulary:
+- The per-gloss anchor is a free **visual prototype** learned by cross-entropy. It never sees
+  the gloss *string*, never touches BERT, carries **no language semantics** — the gloss is
+  just an integer **label**.
+- Closed-vocab: a gloss with no training videos has no weight row and cannot be classified.
+
+So Eval B is the **ceiling for any single-vector-per-gloss model** built on these features —
+the per-gloss vector is unconstrained. V2T solves the same-shaped task but **forces** that
+vector to live in BERT text space (cross-modal + open-vocab). The gap from Eval B down to
+V2T is the *price of that capability*, not lost discriminability.
+
+| | **Eval A** (V2V NN) | **Eval B** (linear probe) | **SignCLIP** (V2T) |
+|---|---|---|---|
+| Gallery | ~40k train **videos** | n_gloss learned **weight rows** | ~2731 **BERT text** vectors |
+| Refs per gloss | **~15** | **1** | **1** |
+| Match rule | max over gloss's videos | single logit | single dot product |
+| Learned mapping? | no (frozen) | **yes** (head on frozen feats) | **yes** (full contrastive) |
+| Uses language/text? | no | **no** (label index only) | **yes** (BERT of gloss string) |
+| Open-vocab? | no | no | **yes** |
+
+Ladder of constraints on "rank glosses for a query video":
+- **Eval A (0.82)** — easiest: ~15 refs/gloss, no learning. Raw visual similarity.
+- **Eval B (0.86)** — 1 ref/gloss, learned, *unconstrained* prototype. Ceiling for a
+  single-vector-per-gloss classifier on these features.
+- **V2T (0.80)** — 1 ref/gloss, learned, *constrained* to BERT text space. The ~6-pt gap
+  below Eval B buys cross-modal, open-vocabulary querying.
+
 ## 3. Why 0.80 (V2T) vs 0.82 (V2V) is not "SignCLIP lost"
 
 | | **Video→Text (SignCLIP, 0.80)** | **Video→Video NN (raw Logos, 0.82)** |
