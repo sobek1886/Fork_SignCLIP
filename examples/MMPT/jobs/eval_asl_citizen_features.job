@@ -8,7 +8,7 @@
 #SBATCH --job-name=eval_asl_feats
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=64
-#SBATCH --time=4:00:00
+#SBATCH --time=6:00:00
 #SBATCH --output=jobs/output/slurm_%x_%A.txt
 
 module purge
@@ -50,10 +50,14 @@ declare -A FEATS=(
   [run_full_sdda]=/scratch-shared/psobecki/ASL_Citizen/logos_features_run_full_sdda
 )
 
-# Only the runs that need (re)evaluating: run3/run1 re-extracted after the stride fix,
-# plus the method variants. Baselines/run2/i3d are unaffected and already in MLflow — add
-# them back here if you ever need to recompute. Absent dirs (e.g. still-training jobs) skip.
-for name in run3 run1 twostage run2_mid run1_mid run1_clscontrast \
+# COMPREHENSIVE pass: every run, evaluated on the IDENTICAL gallery. --min_coverage 0.999 makes
+# any partially-extracted feature dir FAIL loudly (instead of silently giving an easier eval on a
+# smaller gallery — the bug that inflated earlier baseline_native/run1 numbers). Complete Logos
+# runs load exactly 40154 train / 32941 test, so every passing run is on the same gallery.
+# Absent dirs (still-training jobs) are skipped; a failing run prints its error and the loop
+# continues to the next (no set -e), so one partial dir doesn't abort the whole sweep.
+for name in baseline baseline_endanchor baseline_native i3d \
+            run2 run3 run1 twostage run2_mid run1_mid run1_clscontrast \
             run_full_ce run_full_glosscon run_sdda run_full_sdda; do
   dir=${FEATS[$name]}
   if [ ! -d "$dir" ]; then
@@ -66,9 +70,13 @@ for name in run3 run1 twostage run2_mid run1_mid run1_clscontrast \
   echo "--- Eval A + B (one MLflow run) ---"
   python eval_asl_citizen_features.py \
       --feature_name $name --feature_dir $dir --splits_dir $SPLITS \
+      --min_coverage 0.999 \
       --mlflow --mlflow_experiment asl-citizen-feature-eval --mlflow_run_name $name \
-      --output_json runs/asl_ft_eval/${name}.json
+      --output_json runs/asl_ft_eval/${name}.json \
+      || echo "== FAILED $name (likely incomplete extraction — check 'loaded N / 40154' above; re-extract) =="
 done
 
 echo ""
 echo "All evals done. JSONs in runs/asl_ft_eval/"
+echo "VERIFY same gallery: every run above should print 'loaded 40154 / 40154' (gallery) and"
+echo "'loaded 32941 / 32941' (queries). Any run that FAILED needs its features re-extracted in full."
