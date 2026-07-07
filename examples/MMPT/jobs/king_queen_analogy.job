@@ -1,0 +1,32 @@
+#!/bin/bash
+# King - Man + Woman = Queen analogy check (SignCLIP paper's Figure 2 protocol),
+# reproduced on raw frozen Logos features with no contrastive text-alignment
+# training at all. See king_queen_analogy.py for the quantitative (rank of QUEEN
+# among all gloss centers) and visual (t-SNE) checks.
+#
+# For now: logos_features_native only. SignCLIP pooled_video and fine-tuned-Logos
+# variants to be added as separate runs later.
+
+#SBATCH --partition=genoa
+#SBATCH --job-name=king_queen_analogy
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=16
+#SBATCH --time=00:30:00
+#SBATCH --output=jobs/output/slurm_%x_%A.txt
+
+module purge
+module load 2025
+cd $HOME/Fork_SignCLIP/examples/MMPT
+source .venv/bin/activate
+export PYTHONPATH=$HOME/Fork_SignCLIP:$PYTHONPATH
+export PATH="$HOME/Fork_SignCLIP/examples/MMPT/.venv/bin:$PATH"
+
+mkdir -p runs/king_queen_analogy
+
+python king_queen_analogy.py \
+    --feature_dir /scratch-shared/psobecki/ASL_Citizen/logos_features_native \
+    --splits_dir $HOME/ASL_Citizen/splits \
+    --split train \
+    --out_png runs/king_queen_analogy/logos_native.png
+
+echo "Done."
