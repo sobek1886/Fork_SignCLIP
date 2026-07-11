@@ -1,0 +1,54 @@
+#!/bin/bash
+
+#SBATCH --partition=gpu_a100
+#SBATCH --gpus=1
+#SBATCH --job-name=signclip_variants_l2
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --time=4:00:00
+#SBATCH --output=jobs/output/slurm_%x_%A.txt
+
+# L2 signer-bias probe across SignCLIP-head training variants (story point
+# 11i + the counterfactual-contrastive follow-up):
+#   - from-scratch head          (asl_citizen_cnn_scratch_logos_nowd)
+#   - fine-tuned head            (asl_citizen_cnn_logos_ft10)
+#   - fine-tuned + aug-as-data   (asl_citizen_cnn_aug_logos_ft)
+#   - SupCon-on-pairs K=3        (asl_citizen_cnn_appearance_invariant)
+#   - SupCon-on-pairs K=5        (asl_citizen_cnn_appearance_invariant_k5)
+# Prediction from the V2T analysis (context/v2t-performance-analysis.md §4):
+# the aug-trained and pair-trained heads should show a LOWER inter/intra
+# signer ratio than the no-aug heads if augmentation actually collapses
+# residual appearance variance. Compare all of these against the raw-feature
+# probes (probe_backbone_ft_l2.job) for the before/after story.
+# Configs whose checkpoints don't exist yet fail individually and the loop
+# continues, so this is re-runnable as training jobs land.
+
+module purge
+module load 2025
+
+cd $HOME/Fork_SignCLIP/examples/MMPT
+source .venv/bin/activate
+export PYTHONPATH=$HOME/Fork_SignCLIP:$PYTHONPATH
+export PATH="$HOME/Fork_SignCLIP/examples/MMPT/.venv/bin:$PATH"
+
+CACHE=/scratch-shared/psobecki/signclip_embed_cache
+
+declare -A CONFIGS=(
+  [scratch]=projects/retri/signclip_asl/test_asl_citizen_cnn_scratch_logos_nowd.yaml
+  [ft]=projects/retri/signclip_asl/test_asl_citizen_cnn_logos_ft10.yaml
+  [aug_ft]=projects/retri/signclip_asl/test_asl_citizen_cnn_aug_logos_ft.yaml
+  [pair_k3]=projects/retri/signclip_asl/test_asl_citizen_cnn_appearance_invariant.yaml
+  [pair_k5]=projects/retri/signclip_asl/test_asl_citizen_cnn_appearance_invariant_k5.yaml
+)
+
+for name in scratch ft aug_ft pair_k3 pair_k5; do
+  cfg=${CONFIGS[$name]}
+  echo ""
+  echo "=== SignCLIP L2 probe: $name ($cfg) ==="
+  python asl_citizen_signclip_l2_probe.py \
+      --config     "$cfg" \
+      --model_name "signclip_$name" \
+      --split train \
+      --cache_dir  "$CACHE" \
+      || echo "FAILED $name (checkpoint missing?) — continuing"
+done

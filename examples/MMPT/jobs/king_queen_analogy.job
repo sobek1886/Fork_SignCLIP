@@ -1,17 +1,25 @@
 #!/bin/bash
-# King - Man + Woman = Queen analogy check (SignCLIP paper's Figure 2 protocol),
-# reproduced on raw frozen Logos features with no contrastive text-alignment
-# training at all. See king_queen_analogy.py for the quantitative (rank of QUEEN
-# among all gloss centers) and visual (t-SNE) checks.
+# Gendered-pair analogy analysis (extended from the original King - Man +
+# Woman = Queen check). Now runs the full multi-space comparison:
+#   raw frozen Logos vs fine-tuned Logos vs SignCLIP variants, over a battery
+#   of gendered pairs varying in visual similarity, with the delta_cos /
+#   rank_gain control that separates "close because the signs look alike"
+#   from "close because the space learned the semantic relation".
+# See king_queen_analogy.py docstring for the design.
 #
-# For now: logos_features_native only. SignCLIP pooled_video and fine-tuned-Logos
-# variants to be added as separate runs later.
+# Stage 1 (GPU): export pooled_video features for the SignCLIP spaces that
+#   have trained checkpoints — skips any whose checkpoint is missing.
+# Stage 2 (CPU-heavy): run the analogy battery over every available space.
+#
+# PRINCE/PRINCESS availability in ASL Citizen is checked at runtime and the
+# pair is skipped with a warning if absent.
 
-#SBATCH --partition=genoa
+#SBATCH --partition=gpu_a100
+#SBATCH --gpus=1
 #SBATCH --job-name=king_queen_analogy
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16
-#SBATCH --time=00:30:00
+#SBATCH --time=04:00:00
 #SBATCH --output=jobs/output/slurm_%x_%A.txt
 
 module purge
@@ -22,11 +30,35 @@ export PYTHONPATH=$HOME/Fork_SignCLIP:$PYTHONPATH
 export PATH="$HOME/Fork_SignCLIP/examples/MMPT/.venv/bin:$PATH"
 
 mkdir -p runs/king_queen_analogy
+EXPORT_ROOT=/scratch-shared/psobecki/ASL_Citizen
 
+# ── Stage 1: export SignCLIP pooled_video spaces (skip if checkpoint absent) ──
+declare -A EXPORT_CONFIGS=(
+  [signclip_scratch]=projects/retri/signclip_asl/test_asl_citizen_cnn_scratch_logos_nowd.yaml
+  [signclip_ft]=projects/retri/signclip_asl/test_asl_citizen_cnn_logos_ft10.yaml
+  [signclip_aug_ft]=projects/retri/signclip_asl/test_asl_citizen_cnn_aug_logos_ft.yaml
+  [pair_k3]=projects/retri/signclip_asl/test_asl_citizen_cnn_appearance_invariant.yaml
+  [pair_k5]=projects/retri/signclip_asl/test_asl_citizen_cnn_appearance_invariant_k5.yaml
+)
+SPACE_ARGS="--space raw=$EXPORT_ROOT/logos_features_native"
+for name in signclip_scratch signclip_ft signclip_aug_ft pair_k3 pair_k5; do
+  outdir=$EXPORT_ROOT/signclip_features_$name
+  if python export_signclip_features.py \
+        --config "${EXPORT_CONFIGS[$name]}" \
+        --output_dir "$outdir" \
+        --splits train; then
+    SPACE_ARGS="$SPACE_ARGS --space $name=$outdir"
+  else
+    echo "SKIP space $name (export failed — checkpoint missing?)"
+  fi
+done
+
+# ── Stage 2: analogy battery across all available spaces ─────────────────────
 python king_queen_analogy.py \
-    --feature_dir /scratch-shared/psobecki/ASL_Citizen/logos_features_native \
+    $SPACE_ARGS \
     --splits_dir $HOME/ASL_Citizen/splits \
     --split train \
-    --out_png runs/king_queen_analogy/logos_native.png
+    --out_json runs/king_queen_analogy/multi_space.json \
+    --out_png  runs/king_queen_analogy/analogy.png
 
 echo "Done."

@@ -1,0 +1,61 @@
+#!/bin/bash
+
+#SBATCH --partition=gpu_a100
+#SBATCH --gpus=1
+#SBATCH --job-name=backbone_ft_l2_probe
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=8
+#SBATCH --time=3:00:00
+#SBATCH --output=jobs/output/slurm_%x_%A.txt
+
+# L2 signer-bias probe BEFORE vs AFTER backbone fine-tuning (story point 11i).
+# Runs asl_citizen_feature_l2_probe.py over every extracted backbone-FT feature
+# set that exists, so the intra-/inter-signer ratio can be compared across:
+#   - baseline_native (frozen Logos, no FT)   ← the "before"
+#   - run2 (CE), run3 (aug-as-data), run1 (cosine consistency),
+#     run1_clscontrast (CLS-SupCon), run_sdda,
+#     run2_mid / run1_mid, run_full_ce / run_full_glosscon / run_full_sdda
+# Question answered: does ANY fine-tuning condition actually reduce
+# signer-separability of the features, and does the invariance objective
+# reduce it more than plain CE? (Complements Table tab:backbone_ft_retrieval,
+# which only measures retrieval quality, not signer encoding.)
+# Missing feature dirs are skipped with a warning, so this is re-runnable.
+
+module purge
+module load 2025
+
+cd $HOME/Fork_SignCLIP/examples/MMPT
+source .venv/bin/activate
+export PYTHONPATH=$HOME/Fork_SignCLIP:$PYTHONPATH
+export PATH="$HOME/Fork_SignCLIP/examples/MMPT/.venv/bin:$PATH"
+
+FEATURE_ROOT=/scratch-shared/psobecki/ASL_Citizen
+SPLITS=/home/psobecki/ASL_Citizen/splits
+
+declare -A FEATURE_DIRS=(
+  [baseline_native]=$FEATURE_ROOT/logos_features_native
+  [run2]=$FEATURE_ROOT/logos_features_run2
+  [run3]=$FEATURE_ROOT/logos_features_run3
+  [run1]=$FEATURE_ROOT/logos_features_run1
+  [run1_clscontrast]=$FEATURE_ROOT/logos_features_run1_clscontrast
+  [run_sdda]=$FEATURE_ROOT/logos_features_run_sdda
+  [run2_mid]=$FEATURE_ROOT/logos_features_run2_mid
+  [run1_mid]=$FEATURE_ROOT/logos_features_run1_mid
+  [run_full_ce]=$FEATURE_ROOT/logos_features_run_full_ce
+  [run_full_glosscon]=$FEATURE_ROOT/logos_features_run_full_glosscon
+  [run_full_sdda]=$FEATURE_ROOT/logos_features_run_full_sdda
+)
+
+for name in "${!FEATURE_DIRS[@]}"; do
+  dir=${FEATURE_DIRS[$name]}
+  if [ ! -d "$dir" ]; then
+    echo "SKIP $name — $dir not found"
+    continue
+  fi
+  echo ""
+  echo "=== L2 probe: $name ($dir) ==="
+  python asl_citizen_feature_l2_probe.py \
+      --feature_dir  "$dir" \
+      --splits_dir   "$SPLITS" \
+      --feature_name "ft_$name"
+done

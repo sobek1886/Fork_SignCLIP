@@ -1,0 +1,34 @@
+#!/bin/bash
+
+#SBATCH --partition=gpu_a100
+#SBATCH --gpus=1
+#SBATCH --job-name=asl_inv_k5
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=5
+#SBATCH --time=24:00:00
+#SBATCH --output=jobs/output/slurm_%x_%A.txt
+
+module purge
+module load 2025
+
+cd $HOME/Fork_SignCLIP/examples/MMPT
+source .venv/bin/activate
+export PYTHONPATH=$HOME/Fork_SignCLIP:$PYTHONPATH
+export PATH="$HOME/Fork_SignCLIP/examples/MMPT/.venv/bin:$PATH"
+
+# ── 1. Build K=5 pair manifest (original + all four Flux variants) ─────────────
+python make_asl_citizen_pair_manifest.py \
+    --aug_video_list /home/psobecki/ASL_Citizen/aug_selection/aug_video_list.txt \
+    --logos_dir      /home/psobecki/ASL_Citizen/logos_features \
+    --variants       glasses shirt_1 signer_swap skin_mst_diffusion \
+    --output         /home/psobecki/ASL_Citizen/asl_citizen_pair_manifest_k5.json
+
+# ── 2. Fine-tune from baseline checkpoint with SupConLoss on K=5 groups ────────
+srun python locallaunch.py \
+    projects/retri/signclip_asl/asl_citizen_cnn_appearance_invariant_k5.yaml \
+    --jobtype local_single
+
+# ── 3. Evaluate on test set and log to MLflow ──────────────────────────────────
+python mmpt_cli/predict.py \
+    projects/retri/signclip_asl/test_asl_citizen_cnn_appearance_invariant_k5.yaml \
+    --quiet
