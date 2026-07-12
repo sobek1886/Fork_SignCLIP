@@ -1,0 +1,68 @@
+# I3D (WLASL-ft features) fine-tune CONTROL (no augmentation) — resumes the April
+# scratch baseline (asl_citizen_cnn_scratch_wlasl_nowd, the run behind the reported
+# "From scratch, RGB (I3D, WLASL)" table row) and keeps training on the ORIGINAL
+# splits. This is the no-aug reference for measuring the augmentation delta
+# (compare against asl_citizen_cnn_aug_i3d_wlasl_ft.yaml).
+#
+# CORRECTED version of asl_citizen_cnn_i3d_ft.yaml (2026-07-12): the June batch ran
+# on BSL-5K features (i3d_features) and produced results incomparable to the
+# baseline row; this config uses the WLASL-fine-tuned I3D features
+# (i3d_wlasl_features) that the baseline row was built on.
+dataset:
+  max_video_len: 32
+  max_len: 64
+  meta_processor: SignCLIPVideoCSVMetaProcessor
+  video_processor: RWTHFSVideoProcessor
+  text_processor: TextProcessor
+  bert_name: bert-base-cased
+  splits_dir: /home/psobecki/ASL_Citizen/splits
+  train_path: placeholder
+  val_path: placeholder
+  test_path: placeholder
+  vfeat_dir: /home/psobecki/ASL_Citizen/i3d_wlasl_features
+  dataset_name: asl_citizen
+  vfeat_custom: 1
+  aligner: DSAligner
+  sp_universal_tagging: true
+  augment_temporal: true
+fairseq:
+  common:
+    fp16: true
+    tensorboard_logdir: run
+    log_interval: 20
+  dataset:
+    num_workers: 4
+    batch_size: 256
+  optimization:
+    lr:
+    - 1.0e-05
+    clip_norm: 2.0
+    optimizer: adam
+    adam_betas: (0.9, 0.98)
+    lr_scheduler: polynomial_decay
+    total_num_update: 100000
+    warmup_updates: 200
+    weight_decay: 0.01
+    ddp_backend: no_c10d
+    max_epoch: 50
+  checkpoint:
+    no_epoch_checkpoints: true
+    save_dir: runs/retri_asl/asl_citizen_cnn_i3d_wlasl_ft
+    restore_file: runs/retri_asl/asl_citizen_cnn_scratch_wlasl_nowd/checkpoint_best.pt
+    reset_optimizer: true
+    reset_lr_scheduler: true
+    reset_meters: true
+    reset_dataloader: true
+task_type: sweep_small
+model:
+  model_cls: MMFusionSeparate
+  mm_encoder_cls: null
+  video_encoder_cls: MMBertForEncoder
+  text_encoder_cls: BertModel
+  num_hidden_video_layers: 12
+  vfeat_dim: 1024
+loss:
+  loss_cls: MMContraLoss
+eval:
+  save_path: runs/retri_asl/asl_citizen_cnn_i3d_wlasl_ft
+mlflow_experiment: signclip-cnn

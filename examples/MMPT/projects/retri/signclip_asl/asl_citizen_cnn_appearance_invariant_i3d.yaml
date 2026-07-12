@@ -1,0 +1,78 @@
+# Appearance-invariant (contrastive-with-augments) fine-tuning on I3D features.
+# I3D counterpart of asl_citizen_cnn_appearance_invariant_k5.yaml: SupConLoss
+# pulls each video and its four Flux appearance counterfactuals (glasses,
+# shirt_1, signer_swap, skin_mst_diffusion) together, other videos apart.
+# Starts from the April WLASL-ft I3D scratch baseline (the run behind the
+# reported "From scratch, RGB (I3D, WLASL)" table row).
+# K=5, 5*38=190 encoder passes per step ≈ same memory budget as baseline 256.
+#
+# Uses WLASL-fine-tuned I3D features (i3d_wlasl_features) — NOT the BSL-5K
+# i3d_features the failed June batch ran on (see 2026-07-12 debug note in
+# context/experiment-plan-2026-07-11.md).
+#
+# Prereqs:
+#   1. sbatch jobs/extract_i3d_wlasl_features_aug.job  (augmented I3D features)
+#   2. Build the K=5 manifest over the I3D feature dir:
+#      python make_asl_citizen_pair_manifest.py \
+#          --aug_video_list /home/psobecki/ASL_Citizen/aug_selection/aug_video_list.txt \
+#          --logos_dir      /home/psobecki/ASL_Citizen/i3d_wlasl_features \
+#          --variants       glasses shirt_1 signer_swap skin_mst_diffusion \
+#          --output         /home/psobecki/ASL_Citizen/asl_citizen_pair_manifest_i3d_k5.json
+#      (--logos_dir is generically "the feature dir"; the script only globs
+#       asl_citizen_*.npy, so the I3D dir works unchanged.)
+dataset:
+  max_video_len: 32
+  max_len: 64
+  meta_processor: NGTPairMetaProcessor
+  video_processor: NGTPairVideoProcessor
+  text_processor: TextProcessor
+  bert_name: bert-base-cased
+  pair_manifest: /home/psobecki/ASL_Citizen/asl_citizen_pair_manifest_i3d_k5.json
+  load_real: true
+  load_unreal: true
+  aligner: NGTPairAligner
+  vfeat_dim: 1024
+fairseq:
+  common:
+    fp16: true
+    tensorboard_logdir: run
+    log_interval: 20
+  dataset:
+    num_workers: 4
+    batch_size: 38
+    disable_validation: true
+  optimization:
+    lr:
+    - 1.0e-05
+    clip_norm: 2.0
+    optimizer: adam
+    adam_betas: (0.9, 0.98)
+    lr_scheduler: polynomial_decay
+    total_num_update: 100000
+    warmup_updates: 200
+    weight_decay: 0.01
+    ddp_backend: no_c10d
+    max_epoch: 20
+  checkpoint:
+    no_epoch_checkpoints: true
+    save_dir: runs/retri_asl/asl_citizen_cnn_appearance_invariant_i3d
+    restore_file: runs/retri_asl/asl_citizen_cnn_scratch_wlasl_nowd/checkpoint_best.pt
+    reset_optimizer: true
+    reset_lr_scheduler: true
+    reset_meters: true
+    reset_dataloader: true
+task_type: sweep_small
+task: NGTPairTask
+mlflow_experiment: signclip-cnn
+model:
+  model_cls: MMFusionSeparate
+  mm_encoder_cls: null
+  video_encoder_cls: MMBertForEncoder
+  text_encoder_cls: BertModel
+  num_hidden_video_layers: 12
+  vfeat_dim: 1024
+loss:
+  loss_cls: SupConLoss
+  supcon_temperature: 0.07
+eval:
+  save_path: runs/retri_asl/asl_citizen_cnn_appearance_invariant_i3d

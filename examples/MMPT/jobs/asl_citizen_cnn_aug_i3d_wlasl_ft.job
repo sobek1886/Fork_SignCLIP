@@ -1,0 +1,28 @@
+#!/bin/bash
+# +aug FT on WLASL-ft I3D features (augmentations as extra video-text pairs,
+# splits_aug) — resumes the April scratch baseline. Corrected replacement for
+# the June asl_citizen_cnn_aug_i3d_ft.job (which ran on BSL-5K features).
+# Prereq: jobs/extract_i3d_wlasl_features_aug.job (augmented I3D features in
+# i3d_wlasl_features).
+
+#SBATCH --partition=gpu_a100
+#SBATCH --gpus=1
+#SBATCH --job-name=aug_i3d_wlasl_ft
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=5
+#SBATCH --time=24:00:00
+#SBATCH --output=jobs/output/slurm_%x_%A.txt
+
+module purge
+module load 2025
+
+cd $HOME/Fork_SignCLIP/examples/MMPT
+source .venv/bin/activate
+export PYTHONPATH=$HOME/Fork_SignCLIP:$PYTHONPATH
+export PATH="$HOME/Fork_SignCLIP/examples/MMPT/.venv/bin:$PATH"
+
+srun python locallaunch.py projects/retri/signclip_asl/asl_citizen_cnn_aug_i3d_wlasl_ft.yaml --jobtype local_single
+
+python mmpt_cli/predict.py \
+    projects/retri/signclip_asl/test_asl_citizen_cnn_aug_i3d_wlasl_ft.yaml \
+    --quiet
