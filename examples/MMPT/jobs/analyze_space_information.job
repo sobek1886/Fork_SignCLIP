@@ -1,0 +1,50 @@
+#!/bin/bash
+# S2+S6: signer-identity linear probe per space + pairwise linear CKA between
+# spaces (see analyze_space_information.py docstring). SignCLIP-export spaces
+# are picked up if jobs/king_queen_analogy.job stage 1 has produced them;
+# missing dirs are skipped. CPU-only; run on genoa.
+
+#SBATCH --partition=genoa
+#SBATCH --job-name=space_info
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=16
+#SBATCH --time=03:00:00
+#SBATCH --output=jobs/output/slurm_%x_%A.txt
+
+module purge
+module load 2025
+cd $HOME/Fork_SignCLIP/examples/MMPT
+source .venv/bin/activate
+export PYTHONPATH=$HOME/Fork_SignCLIP:$PYTHONPATH
+export PATH="$HOME/Fork_SignCLIP/examples/MMPT/.venv/bin:$PATH"
+
+mkdir -p runs/space_info
+
+ROOT=/scratch-shared/psobecki/ASL_Citizen
+SPACE_ARGS=""
+declare -A CANDIDATES=(
+  [raw]=$ROOT/logos_features_native
+  [ft_ce]=$ROOT/logos_features_run2
+  [ft_augdata]=$ROOT/logos_features_run3
+  [ft_consistency]=$ROOT/logos_features_run1
+  [signclip_scratch]=$ROOT/signclip_features_signclip_scratch
+  [signclip_aug_ft]=$ROOT/signclip_features_signclip_aug_ft
+  [pair_k3]=$ROOT/signclip_features_pair_k3
+  [pair_k5]=$ROOT/signclip_features_pair_k5
+)
+for name in raw ft_ce ft_augdata ft_consistency signclip_scratch signclip_aug_ft pair_k3 pair_k5; do
+  dir=${CANDIDATES[$name]}
+  if [ -d "$dir" ]; then
+    SPACE_ARGS="$SPACE_ARGS --space $name=$dir"
+  else
+    echo "SKIP $name — $dir not found"
+  fi
+done
+
+python analyze_space_information.py \
+    $SPACE_ARGS \
+    --splits_dir /home/psobecki/ASL_Citizen/splits \
+    --split train --max_videos 8000 \
+    --out_json runs/space_info/space_info.json
+
+echo "Done."

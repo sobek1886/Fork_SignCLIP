@@ -1,0 +1,61 @@
+#!/bin/bash
+# S4: per-signer fairness spread across training conditions. Runs the
+# existing eval_asl_citizen_per_signer.py over every available feature set,
+# then summarize_per_signer_spread.py compares the spreads (std, max-min gap,
+# worst signers, and whether gains correlate with baseline weakness — i.e.
+# does augmentation lift the weak signers or only the average?).
+# Optional follow-up (manual): group signers by Atwell et al.'s released
+# ASL Citizen participant demographics for a demographic-gap version.
+
+#SBATCH --partition=gpu_a100
+#SBATCH --gpus=1
+#SBATCH --job-name=per_signer_spread
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=8
+#SBATCH --time=03:00:00
+#SBATCH --output=jobs/output/slurm_%x_%A.txt
+
+module purge
+module load 2025
+cd $HOME/Fork_SignCLIP/examples/MMPT
+source .venv/bin/activate
+export PYTHONPATH=$HOME/Fork_SignCLIP:$PYTHONPATH
+export PATH="$HOME/Fork_SignCLIP/examples/MMPT/.venv/bin:$PATH"
+
+mkdir -p runs/per_signer
+ROOT=/scratch-shared/psobecki/ASL_Citizen
+
+declare -A CANDIDATES=(
+  [baseline_native]=$ROOT/logos_features_native
+  [run2]=$ROOT/logos_features_run2
+  [run3]=$ROOT/logos_features_run3
+  [run1]=$ROOT/logos_features_run1
+  [signclip_scratch]=$ROOT/signclip_features_signclip_scratch
+  [signclip_aug_ft]=$ROOT/signclip_features_signclip_aug_ft
+  [pair_k5]=$ROOT/signclip_features_pair_k5
+)
+
+CSV_ARGS=""
+for name in baseline_native run2 run3 run1 signclip_scratch signclip_aug_ft pair_k5; do
+  dir=${CANDIDATES[$name]}
+  if [ ! -d "$dir" ]; then
+    echo "SKIP $name — $dir not found"
+    continue
+  fi
+  echo ""
+  echo "=== per-signer eval: $name ==="
+  python eval_asl_citizen_per_signer.py \
+      --feature_dir "$dir" \
+      --splits_dir  /home/psobecki/ASL_Citizen/splits \
+      --feature_name "$name" \
+      --output_csv runs/per_signer/${name}.csv \
+      && CSV_ARGS="$CSV_ARGS --csv $name=runs/per_signer/${name}.csv" \
+      || echo "FAILED $name — continuing"
+done
+
+python summarize_per_signer_spread.py \
+    $CSV_ARGS \
+    --baseline baseline_native \
+    --out_json runs/per_signer/spread_summary.json
+
+echo "Done."

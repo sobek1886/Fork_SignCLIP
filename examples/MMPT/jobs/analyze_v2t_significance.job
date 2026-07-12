@@ -1,0 +1,32 @@
+#!/bin/bash
+# S5+S7: McNemar + bootstrap CI on the +1.1 R@1 augmentation gain, and
+# variant-gloss error-concentration check (see analyze_v2t_significance.py
+# docstring). GPU (recomputes per-video V2T predictions from the trained
+# checkpoints). Each run's printed R@1 must match the reported table values
+# (0.750 scratch / 0.789 ft / 0.800 ft+aug) — if not, stop and investigate.
+
+#SBATCH --partition=gpu_a100
+#SBATCH --gpus=1
+#SBATCH --job-name=v2t_significance
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=5
+#SBATCH --time=02:00:00
+#SBATCH --output=jobs/output/slurm_%x_%A.txt
+
+module purge
+module load 2025
+cd $HOME/Fork_SignCLIP/examples/MMPT
+source .venv/bin/activate
+export PYTHONPATH=$HOME/Fork_SignCLIP:$PYTHONPATH
+export PATH="$HOME/Fork_SignCLIP/examples/MMPT/.venv/bin:$PATH"
+
+mkdir -p runs/v2t_significance
+
+python analyze_v2t_significance.py \
+    --config scratch=projects/retri/signclip_asl/test_asl_citizen_cnn_scratch_logos_nowd.yaml \
+    --config ft=projects/retri/signclip_asl/test_asl_citizen_cnn_logos_ft10.yaml \
+    --config ft_aug=projects/retri/signclip_asl/test_asl_citizen_cnn_aug_logos_ft.yaml \
+    --split test \
+    --out_json runs/v2t_significance/logos_pairs.json
+
+echo "Done."
