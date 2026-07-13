@@ -115,7 +115,45 @@ def predict_config(config_path, split, batch_size, device):
     r1 = float(np.mean([p["correct"] for p in preds.values()]))
     print(f"  {len(preds)} videos, {len(uniq)} unique texts, R@1={r1:.4f} "
           f"(sanity-check against the reported table value)")
-    return preds
+    anchor_stats = text_anchor_proximity(uniq, T)
+    return preds, anchor_stats
+
+
+def text_anchor_proximity(uniq, T, seed=0):
+    """Are variant-family text anchors ('X' vs 'X 2') really close? (todo #18)
+
+    Returns mean cosine between text anchors WITHIN a variant family vs the
+    mean cosine of random unrelated anchor pairs — the direct measurement of
+    the anchor-proximity hypothesis in the Discussion's mechanism B."""
+    Tn = T / np.maximum(np.linalg.norm(T, axis=1, keepdims=True), 1e-12)
+    fam = defaultdict(list)
+    for i, u in enumerate(uniq):
+        _, base = gloss_base(u)
+        fam[base].append(i)
+    within = []
+    for idxs in fam.values():
+        for a in range(len(idxs)):
+            for b in range(a + 1, len(idxs)):
+                within.append(float(Tn[idxs[a]] @ Tn[idxs[b]]))
+    rng = np.random.default_rng(seed)
+    rand = []
+    for _ in range(max(1000, len(within) * 10)):
+        i, j = rng.integers(0, len(uniq), 2)
+        if i != j:
+            rand.append(float(Tn[i] @ Tn[j]))
+    stats = {
+        "n_family_pairs": len(within),
+        "mean_cos_within_family": float(np.mean(within)) if within else None,
+        "mean_cos_random_pairs": float(np.mean(rand)),
+        "p90_cos_random_pairs": float(np.percentile(rand, 90)),
+    }
+    if within:
+        print(f"  text-anchor proximity: within-family cos "
+              f"{stats['mean_cos_within_family']:.4f} vs random "
+              f"{stats['mean_cos_random_pairs']:.4f} "
+              f"(random p90 {stats['p90_cos_random_pairs']:.4f}, "
+              f"{len(within)} family pairs)")
+    return stats
 
 
 def mcnemar_exact(b, c):
@@ -142,11 +180,14 @@ def main():
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     systems = {}
+    anchor_proximity = {}
     for name, path in dict(args.config).items():
         print(f"\n=== Config: {name} ({path}) ===")
-        systems[name] = predict_config(path, args.split, args.batch_size, device)
+        systems[name], anchor_proximity[name] = predict_config(
+            path, args.split, args.batch_size, device)
 
-    results = {"r1": {}, "mcnemar": {}, "variant_errors": {}}
+    results = {"r1": {}, "mcnemar": {}, "variant_errors": {},
+               "text_anchor_proximity": anchor_proximity}
     for name, preds in systems.items():
         results["r1"][name] = float(np.mean([p["correct"]
                                              for p in preds.values()]))
