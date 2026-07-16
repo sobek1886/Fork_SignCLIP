@@ -1,11 +1,11 @@
-# Flux-vs-Unreal comparison — E3: FRONT + same-view Unreal identities
-# (palmer + digits renders from the front camera, cam4), SupCon K=3.
-# Appearance varies, viewpoint held fixed — the matched-composition
-# head-to-head against ngt_sv_flux (E4).
-# 3*64=192 encoder passes per step (constant budget across arms).
+# Flux-vs-Unreal comparison — E2: real multi-view reference.
+# FRONT + the other real camera views of the same take (K=3), SupCon.
+# Shows what genuinely new real viewpoints buy, as the reference point for the
+# synthetic arms. 3*64=192 encoder passes per step (constant budget).
 #
-# Prerequisite: run make_ngt_singleview_manifest.py (writes every arm's
-# manifest; all arms share the identical sentence set).
+# Prerequisite: make_ngt_singleview_manifest.py (all arms share one sentence
+# set; this arm may be a disclosed subset if some sessions lack extra views —
+# the builder prints a warning with the count).
 dataset:
   max_video_len: 32
   max_len: 64
@@ -13,9 +13,9 @@ dataset:
   video_processor: NGTPairVideoProcessor
   text_processor: TextProcessor
   bert_name: bert-base-cased
-  pair_manifest: /home/psobecki/ngt_sv_unreal_manifest.json
+  pair_manifest: /home/psobecki/ngt_sv_real_multiview_manifest.json
   load_real: true
-  load_unreal: true
+  load_unreal: false
   aligner: NGTPairAligner
   vfeat_dim: 768
 fairseq:
@@ -25,7 +25,7 @@ fairseq:
     log_interval: 20
   dataset:
     num_workers: 4
-    # 3*64=192 encoder passes per step ≈ same budget as baseline 3*64=192
+    # 3*64=192 encoder passes per step (constant budget across arms)
     batch_size: 64
     disable_validation: true
   optimization:
@@ -41,7 +41,7 @@ fairseq:
     max_epoch: 50
   checkpoint:
     no_epoch_checkpoints: true
-    save_dir: /scratch-shared/psobecki/runs/retri_ngt/ngt_sv_unreal
+    save_dir: /scratch-shared/psobecki/runs/retri_ngt/ngt_sv_real_multiview
 task_type: sweep_small
 task: NGTPairTask
 mlflow_experiment: signclip-ngt
@@ -56,4 +56,4 @@ loss:
   loss_cls: SupConLoss
   supcon_temperature: 0.07
 eval:
-  save_path: /scratch-shared/psobecki/runs/retri_ngt/ngt_sv_unreal
+  save_path: /scratch-shared/psobecki/runs/retri_ngt/ngt_sv_real_multiview

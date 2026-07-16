@@ -1007,16 +1007,25 @@ class NGTPairVideoProcessor(VideoProcessor):
 
     Returns a tuple of N numpy arrays, each of shape (N_clips, 768).
 
+    Manifest entry formats (both supported):
+      - dict:  {"real": [...], "unreal": [...]}          (single recording)
+      - list:  [{"real": [...], "unreal": [...]}, ...]   (one dict per repeat
+        take of the same sentence; produced by make_ngt_singleview_manifest.py)
+    For list entries, ONE take is sampled uniformly per __getitem__ during
+    training, so every repeat take participates over training while a batch
+    never contains two items of the same sentence (no false negatives).
+    Outside training (split != 'train'), take 0 is used deterministically.
+
     Config flags:
       load_real (bool, default True):
-          Include the 3 real piotrAnims views.
+          Include the real views listed under "real".
       load_unreal (bool, default True):
-          Include synthetic Unreal Engine views.
+          Include synthetic views listed under "unreal".
       unreal_character (int or null, default null):
-          Which synthetic character to load.  The manifest stores unreal views
-          as [palmer_cam2, palmer_cam3, palmer_cam4, digits_cam2, digits_cam3,
-          digits_cam4], so 0 = palmer (views 0-2), 1 = digits (views 3-5),
-          null = all 6 views.
+          Which synthetic character to load.  The full pair manifest stores
+          unreal views as [palmer_cam2, palmer_cam3, palmer_cam4, digits_cam2,
+          digits_cam3, digits_cam4], so 0 = palmer (views 0-2), 1 = digits
+          (views 3-5), null = all views.
 
     Typical K values:
       load_real=true,  load_unreal=false                → K=3  (real baseline)
@@ -1036,9 +1045,15 @@ class NGTPairVideoProcessor(VideoProcessor):
         self.load_unreal = True if _lu is None else bool(_lu)
         _uc = getattr(config, 'unreal_character', None)
         self.unreal_character = None if (_uc is None or _uc == 'null') else int(_uc)
+        self.split = getattr(config, 'split', 'train')
 
     def __call__(self, sign_id):
         paths = self.manifest[sign_id]
+        if isinstance(paths, list):
+            if self.split == 'train':
+                paths = random.choice(paths)
+            else:
+                paths = paths[0]
         feats = []
         if self.load_real:
             feats += [np.load(p) for p in paths['real']]

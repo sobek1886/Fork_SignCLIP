@@ -93,8 +93,10 @@ class NGTPairTask(Task):
                 self.inv_loss_fn = inv_loss_cls(self.config.loss)
             except TypeError:
                 self.inv_loss_fn = inv_loss_cls()
-        elif self.config.loss.loss_cls == 'SupConLoss':
-            # NGT-only mode: the primary loss_fn IS the SupConLoss
+        elif self.config.loss.loss_cls in ('SupConLoss', 'VidNCELoss'):
+            # NGT-only mode: the primary loss_fn IS the video-only loss.
+            # VidNCELoss is the K=1 arm (SupCon has no positive pairs there);
+            # it ignores the supcon_labels kwarg via **kwargs.
             self.inv_loss_fn = self.loss_fn
             self.loss_fn = None  # no CLIP loss
 

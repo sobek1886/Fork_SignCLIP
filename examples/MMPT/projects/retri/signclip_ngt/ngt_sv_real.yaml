@@ -1,10 +1,11 @@
-# Flux-vs-Unreal single-view comparison — ARM 1: real RIGHT view only, K=1.
+# Flux-vs-Unreal comparison — E1: baseline, real FRONT view only, K=1.
+# (The FRONT camera is the view labeled RIGHT in the recording filenames.)
 # SupCon has no positives at K=1, so this arm uses VidNCELoss (video-only
-# instance discrimination), the codebase's intended single-view baseline.
-# 1*192=192 encoder passes per step ≈ same budget as baseline 3*64=192.
+# instance discrimination). All sessions; repeat takes sampled per step.
+# 1*192=192 encoder passes per step (constant budget across arms).
 #
-# Prerequisite: run make_ngt_singleview_manifest.py (writes all three
-# ngt_sv_*_manifest.json files; all arms share the identical sign set).
+# Prerequisite: run make_ngt_singleview_manifest.py (writes every arm's
+# manifest; all arms share the identical sentence set).
 dataset:
   max_video_len: 32
   max_len: 64

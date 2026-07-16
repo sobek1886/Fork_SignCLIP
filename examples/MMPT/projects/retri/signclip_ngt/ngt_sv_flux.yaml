@@ -1,14 +1,14 @@
-# Flux-vs-Unreal single-view comparison — ARM 3: real RIGHT view + same-view
-# Flux appearance variants (signer_swap + skin_mst_diffusion by default, the
-# two identity-changing edits), SupConLoss K=3 — matched to ngt_sv_unreal's
-# K and to its "2 synthetic identities of the same view" structure.
-# 3*64=192 encoder passes per step ≈ same budget as baseline 3*64=192.
+# Flux-vs-Unreal comparison — E4: FRONT + the two identity-changing Flux
+# edits (signer_swap + skin_mst_diffusion), SupCon K=3 — matched to
+# ngt_sv_unreal's (E3) K and its "2 synthetic identities of the same view"
+# structure. This is the matched-composition head-to-head against E3.
+# 3*64=192 encoder passes per step (constant budget across arms).
 #
 # Prerequisites:
-#   1. Extract Flux NGT features: sbatch extract_logos_features_ngt_flux.job
-#      (Fork_Logos) on the 2026-03-16 (piotrAnims-session) date batch.
-#   2. Run make_ngt_singleview_manifest.py (writes all three
-#      ngt_sv_*_manifest.json files; all arms share the identical sign set).
+#   1. Extract Flux NGT features for ALL sessions:
+#      sbatch extract_logos_features_ngt_flux.job (Fork_Logos).
+#   2. Run make_ngt_singleview_manifest.py (writes every arm's manifest;
+#      all arms share the identical sentence set).
 dataset:
   max_video_len: 32
   max_len: 64
