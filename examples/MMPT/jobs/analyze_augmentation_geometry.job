@@ -55,8 +55,8 @@ python analyze_augmentation_geometry.py \
     --space glosscon=$FROOT/logos_features_run_full_glosscon \
     --space sdda=$FROOT/logos_features_run_full_sdda \
     --splits_dir /home/psobecki/ASL_Citizen/splits \
-    --split train \
-    --out_json runs/aug_geometry/aug_geometry.json \
-    --out_fig_dir runs/aug_geometry/figs
+    --split ${SPLIT:-train} \
+    --out_json runs/aug_geometry/aug_geometry_${SPLIT:-train}.json \
+    --out_fig_dir runs/aug_geometry/figs_${SPLIT:-train}
 
 echo "Done."
