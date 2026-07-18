@@ -1,12 +1,35 @@
 #!/bin/bash
-# S1+S3: augmentation displacement-direction analysis + counterfactual
-# confusion test (see analyze_augmentation_geometry.py docstring).
-# Runs on every space that contains BOTH original and _variant .npy files;
-# spaces with originals only are skipped automatically. Frozen Logos
-# (logos_features, where the SignCLIP-side aug features live) is the
-# guaranteed space; i3d_wlasl_features joins once
-# extract_i3d_wlasl_features_aug.job has run.
+# E4 — augmented-vs-original proximity + sim-to-real gap (see
+# analyze_augmentation_geometry.py docstring). Runs the 4-block redesign
+# (calibrated proximity / real-vs-synthetic separability / sign preservation /
+# signer-vs-sign subspace) on every space that contains BOTH original and
+# _variant .npy files; originals-only spaces are skipped automatically.
 # CPU-only; run on genoa.
+#
+# PRIMARY result = the frozen space (logos_features_native with augments
+# extracted alongside, per feature-reextraction-spec §2.A/§2.B): "is there a
+# sim-to-real gap in the frozen LOGOS features, and do augments land near their
+# originals?" This is not circular and needs only the frozen checkpoint.
+#
+# INTERVENTION spaces (run1/run3/glosscon/sdda) answer "does the intervention
+# close the gap?" — but only if their AUGMENT features exist too. Each run's
+# feature dir currently holds ORIGINALS only (the ft jobs re-extract videos, not
+# aug frames); to include a run here, first extract its augments THROUGH that
+# run's checkpoint:
+#   python extract_logos_features_asl_citizen_aug.py \
+#       --aug_dir /scratch-shared/psobecki/ASL_Citizen/augmented_frames_512 \
+#       --output_dir /scratch-shared/psobecki/ASL_Citizen/logos_features_<run> \
+#       --checkpoint /scratch-shared/psobecki/runs/asl_ft_<run>/checkpoint_best.pt \
+#       --preproc logos_native --frame_interval 1 \
+#       --aug_names glasses shirt_1 signer_swap skin_mst_diffusion
+#   (--frame_interval is the EXTRACTOR's flag — stride-2-stored frames;
+#    --aug_frame_interval is the trainer's flag. The --preproc fix is in, spec §7.)
+# CAVEAT: the 6000-video augment batch is train-only, so intervention-space
+# numbers on --split train are OPTIMISTIC (the model trained on these exact
+# augments). The held-out batch augmented_frames_512_test (500 test videos x 4
+# variants) exists for the honest comparison: extract it into the same feature
+# dir(s), then rerun this job with --split test.
+# Spaces without aug features are skipped, so listing them here is harmless.
 
 #SBATCH --partition=genoa
 #SBATCH --job-name=aug_geometry
@@ -23,12 +46,17 @@ export PYTHONPATH=$HOME/Fork_SignCLIP:$PYTHONPATH
 export PATH="$HOME/Fork_SignCLIP/examples/MMPT/.venv/bin:$PATH"
 
 mkdir -p runs/aug_geometry
+FROOT=/scratch-shared/psobecki/ASL_Citizen
 
 python analyze_augmentation_geometry.py \
-    --space frozen_logos=/home/psobecki/ASL_Citizen/logos_features \
-    --space i3d_wlasl=/home/psobecki/ASL_Citizen/i3d_wlasl_features \
+    --space frozen=$FROOT/logos_features_native \
+    --space run3=$FROOT/logos_features_run3 \
+    --space run1=$FROOT/logos_features_run1 \
+    --space glosscon=$FROOT/logos_features_run_full_glosscon \
+    --space sdda=$FROOT/logos_features_run_full_sdda \
     --splits_dir /home/psobecki/ASL_Citizen/splits \
     --split train \
-    --out_json runs/aug_geometry/aug_geometry.json
+    --out_json runs/aug_geometry/aug_geometry.json \
+    --out_fig_dir runs/aug_geometry/figs
 
 echo "Done."
