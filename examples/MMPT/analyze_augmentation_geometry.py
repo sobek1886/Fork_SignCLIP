@@ -306,10 +306,19 @@ def separability_deshift(orig, aug, groups, seed=0):
         return None
     aucs = []
     try:
+        rng = np.random.RandomState(seed)
         for tr, te in GroupKFold(n_splits).split(orig, groups=groups):
             md = (aug[tr] - orig[tr]).mean(axis=0)
-            Xtr = np.concatenate([orig[tr], aug[tr] - md], axis=0)
-            ytr = np.array([0] * len(tr) + [1] * len(tr))
+            # Unpaired fit: each train pair contributes EITHER its original OR
+            # its de-shifted augment, never both. With both, the mean-centred
+            # displacements sum to zero and w=0 is an exact stationary point
+            # of any class-balanced linear loss — the optimiser then returns
+            # the zero classifier and AUC is pinned at exactly 0.5 (observed
+            # 2026-07-19). Random assignment breaks the symmetry; the test
+            # fold keeps both members.
+            half = rng.rand(len(tr)) < 0.5
+            Xtr = np.concatenate([orig[tr][~half], aug[tr][half] - md], axis=0)
+            ytr = np.array([0] * int((~half).sum()) + [1] * int(half.sum()))
             Xte = np.concatenate([orig[te], aug[te] - md], axis=0)
             yte = np.array([0] * len(te) + [1] * len(te))
             pipe = make_pipeline(

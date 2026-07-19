@@ -50,10 +50,10 @@ FROOT=/scratch-shared/psobecki/ASL_Citizen
 
 python analyze_augmentation_geometry.py \
     --space frozen=$FROOT/logos_features_native \
+    --space run2=$FROOT/logos_features_run2 \
     --space run3=$FROOT/logos_features_run3 \
     --space run1=$FROOT/logos_features_run1 \
-    --space glosscon=$FROOT/logos_features_run_full_glosscon \
-    --space sdda=$FROOT/logos_features_run_full_sdda \
+    --space sdda=$FROOT/logos_features_run_sdda \
     --splits_dir /home/psobecki/ASL_Citizen/splits \
     --split ${SPLIT:-train} \
     --out_json runs/aug_geometry/aug_geometry_${SPLIT:-train}.json \

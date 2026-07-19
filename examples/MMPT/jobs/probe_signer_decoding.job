@@ -1,0 +1,40 @@
+#!/bin/bash
+# E3 signer-DECODING probe (linear softmax head on frozen features) over the
+# frozen baseline + every top-2-family backbone-FT space. Companion to
+# jobs/probe_backbone_ft_l2.job (E2 distance probe); thesis
+# sec:results-ft-probes. Missing spaces are skipped, so this is re-runnable.
+# TEST split (11 signers, signer-disjoint from FT training) is the primary
+# readout; TRAIN split (35 signers) is the secondary.
+
+#SBATCH --partition=genoa
+#SBATCH --job-name=signer_decoding
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=32
+#SBATCH --time=06:00:00
+#SBATCH --output=jobs/output/slurm_%x_%A.txt
+
+module purge
+module load 2025
+cd $HOME/Fork_SignCLIP/examples/MMPT
+source .venv/bin/activate
+export PYTHONPATH=$HOME/Fork_SignCLIP:$PYTHONPATH
+export PATH="$HOME/Fork_SignCLIP/examples/MMPT/.venv/bin:$PATH"
+
+FROOT=/scratch-shared/psobecki/ASL_Citizen
+mkdir -p runs/signer_probe
+
+python asl_citizen_signer_classifier.py \
+    --space baseline_native=$FROOT/logos_features_native \
+    --space run2=$FROOT/logos_features_run2 \
+    --space run3=$FROOT/logos_features_run3 \
+    --space run1=$FROOT/logos_features_run1 \
+    --space run1_glasses=$FROOT/logos_features_run1_glasses \
+    --space run1_shirt1=$FROOT/logos_features_run1_shirt1 \
+    --space run1_signerswap=$FROOT/logos_features_run1_signerswap \
+    --space run1_skin=$FROOT/logos_features_run1_skin \
+    --space run_sdda=$FROOT/logos_features_run_sdda \
+    --splits_dir /home/psobecki/ASL_Citizen/splits \
+    --splits test train \
+    --out_json runs/signer_probe/signer_decoding.json
+
+echo "Done."
