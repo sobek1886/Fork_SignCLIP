@@ -52,11 +52,24 @@ Usage (on Snellius):
         --flux_dir    /scratch-shared/psobecki/NGT_Flux/logos_features \
         --bushuis_dir /scratch-shared/psobecki/Bushuis/logos_features \
         --output_dir  /home/psobecki
+
+Real-signer-count mode (--sessions): instead of the E1-E10 ladder, emit ONE
+fixed-data condition — the paired real + unreal_full arms restricted to the
+given recording sessions (= signers), exactly --sentence_budget sentences split
+evenly across sessions (largest remainder, CLI order), ONE take per sentence
+(the first core-complete take in its session). #sentences == #videos, so every
+condition trains on the same number of front-view videos and the same epoch
+size regardless of signer count; both arms share identical sentences and takes.
+A coverage sidecar records the Bushuis-matched count per session (reported as a
+covariate — sessions are near sentence-disjoint, so eval coverage cannot be
+equalised across signer counts).
+    ... --sessions 251126 260129 --sentence_budget 200 --budget_seed 0 --suffix R2
 """
 
 import argparse
 import json
 import os
+import random
 import re
 from collections import defaultdict
 from pathlib import Path
@@ -171,6 +184,80 @@ def build_take_dict(slot, arm, args):
     raise ValueError(arm)
 
 
+def write_session_subset(sentences, sentence_keys, bushuis_ids, args):
+    """--sessions mode: one fixed-data signer-count condition (docstring top)."""
+    sess_sel = list(dict.fromkeys(args.sessions))
+    budget, suffix = args.sentence_budget, args.suffix
+
+    # Assign each sentence to the first selected session holding a complete
+    # take, and pin its single take = first complete take in that session.
+    eligible = {s: [] for s in sess_sel}
+    chosen = {}  # sent -> (session, take_key_index_into_sentence_lists)
+    for sent in sorted(sentences):
+        for i, (sess, take) in enumerate(sentence_keys[sent]):
+            if sess in sess_sel:
+                eligible[sess].append(sent)
+                chosen[sent] = (sess, i, take)
+                break
+
+    # Largest-remainder split of the budget, CLI session order.
+    base, rem = divmod(budget, len(sess_sel))
+    quotas = {s: base + (1 if j < rem else 0) for j, s in enumerate(sess_sel)}
+    for s in sess_sel:
+        if quotas[s] > len(eligible[s]):
+            raise SystemExit(f'Session {s}: quota {quotas[s]} > '
+                             f'{len(eligible[s])} eligible sentences — lower '
+                             f'--sentence_budget or change --sessions.')
+
+    rng = random.Random(args.budget_seed)
+    selected = []
+    for s in sess_sel:
+        selected += rng.sample(eligible[s], quotas[s])
+    selected = sorted(selected)
+    assert len(selected) == budget
+
+    manifests = {}
+    for arm in ['real', 'unreal_full']:
+        manifests[arm] = {
+            sent: [build_take_dict(sentences[sent][chosen[sent][1]], arm, args)]
+            for sent in selected}
+        out = os.path.join(args.output_dir,
+                           f'ngt_sv_{arm}_{suffix}_manifest.json')
+        with open(out, 'w') as f:
+            json.dump(manifests[arm], f, indent=2)
+        ks = {len(t['real']) + len(t['unreal'])
+              for tl in manifests[arm].values() for t in tl}
+        print(f'  Wrote {len(manifests[arm]):4d} sentences (K={sorted(ks)}) → {out}')
+
+    # Paired-arms gate: identical real slots (same sentence, same take).
+    for sent in selected:
+        assert (manifests['real'][sent][0]['real']
+                == manifests['unreal_full'][sent][0]['real']), sent
+
+    per_session = {}
+    for s in sess_sel:
+        sel_s = [x for x in selected if chosen[x][0] == s]
+        per_session[s] = {
+            'eligible': len(eligible[s]), 'quota': quotas[s],
+            'selected': len(sel_s),
+            'bushuis_matched_selected': len(set(sel_s) & bushuis_ids)}
+    coverage = {
+        'suffix': suffix, 'sessions': sess_sel, 'sentence_budget': budget,
+        'budget_seed': args.budget_seed, 'per_session': per_session,
+        'total_selected': len(selected),
+        'total_bushuis_matched': len(set(selected) & bushuis_ids),
+        'sentences': {sent: {'session': chosen[sent][0],
+                             'take': chosen[sent][2]} for sent in selected}}
+    out = os.path.join(args.output_dir, f'ngt_sv_{suffix}_coverage.json')
+    with open(out, 'w') as f:
+        json.dump(coverage, f, indent=2)
+    print(f'  Coverage sidecar → {out}')
+    print(f'\nCondition {suffix}: {len(sess_sel)} signer(s) {sess_sel}, '
+          f'{budget} sentences = {budget} front videos '
+          f'(per-session {[quotas[s] for s in sess_sel]}), '
+          f'Bushuis-matched {coverage["total_bushuis_matched"]}.')
+
+
 def main():
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -192,7 +279,22 @@ def main():
     parser.add_argument('--unreal_characters', nargs='+', default=['palmer', 'digits'])
     parser.add_argument('--unreal_cams', nargs='+', default=['cam2', 'cam3', 'cam4'])
     parser.add_argument('--output_dir', required=True)
+    parser.add_argument('--sessions', nargs='+', default=None,
+                        help='real-signer-count mode: 6-digit session ids '
+                             '(=signers) to include; emits only the paired '
+                             'real + unreal_full arms for this condition')
+    parser.add_argument('--sentence_budget', type=int, default=200,
+                        help='(--sessions mode) total sentences = total front '
+                             'videos, split evenly across sessions')
+    parser.add_argument('--budget_seed', type=int, default=0,
+                        help='(--sessions mode) seed for the per-session '
+                             'sentence sample')
+    parser.add_argument('--suffix', default=None,
+                        help='(--sessions mode) manifest name suffix, e.g. R2')
     args = parser.parse_args()
+
+    if args.sessions and not args.suffix:
+        raise SystemExit('--sessions mode requires --suffix (e.g. R2)')
 
     if args.front_cam not in args.unreal_cams:
         raise SystemExit(f'--front_cam {args.front_cam} not in --unreal_cams')
@@ -201,12 +303,14 @@ def main():
 
     # Core-complete takes per sentence, sorted (session, take) → take 0 stable.
     sentences = {}
+    sentence_keys = {}   # sent -> [(session, take_idx), ...] parallel to lists
     n_incomplete = 0
     for sent, slots in takes.items():
         complete = {k: v for k, v in slots.items() if core_complete(v, args)}
         n_incomplete += len(slots) - len(complete)
         if complete:
-            sentences[sent] = [complete[k] for k in sorted(complete)]
+            sentence_keys[sent] = sorted(complete)
+            sentences[sent] = [complete[k] for k in sentence_keys[sent]]
     if not sentences:
         raise SystemExit('No sentence has a core-complete take — check dirs, '
                          '--front_view_label, --front_cam and that extraction '
@@ -220,6 +324,11 @@ def main():
     subset_ids = sorted(set(sentences) & bushuis_ids)
     print(f'Bushuis features found for {len(bushuis_ids)} sentences; '
           f'test-matched subset: {len(subset_ids)} sentences')
+
+    if args.sessions:
+        os.makedirs(args.output_dir, exist_ok=True)
+        write_session_subset(sentences, sentence_keys, bushuis_ids, args)
+        return
 
     keys = sorted(sentences)
     arms = ['real', 'real_multiview', 'unreal', 'flux', 'unreal_full',
