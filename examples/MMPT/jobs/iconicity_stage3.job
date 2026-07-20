@@ -1,0 +1,54 @@
+#!/bin/bash
+# Stage 3 of king_queen_analogy.job ONLY (iconicity + gender-location probe),
+# split out after the 2026-07-19 run (24755222) crashed here on a CSV encoding
+# bug (ASL-LEX signdata is cp1252, not UTF-8 — fixed in iconicity_analysis.py).
+# CPU-only: reuses the SignCLIP pooled_video exports that stage 1 of 24755222
+# already wrote to $EXPORT_ROOT/signclip_features_* (all 6 spaces landed).
+# Outputs: runs/king_queen_analogy/iconicity_multi.json (+ _hearing.json)
+# — the numbers for the thesis todos in sec:results-analogy (VSS form-overlap
+# check) and sec:results-iconicity (tertile contrast + gender probe).
+
+#SBATCH --partition=genoa
+#SBATCH --job-name=iconicity_stage3
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=16
+#SBATCH --time=02:00:00
+#SBATCH --output=jobs/output/slurm_%x_%A.txt
+
+module purge
+module load 2025
+cd $HOME/Fork_SignCLIP/examples/MMPT
+source .venv/bin/activate
+export PYTHONPATH=$HOME/Fork_SignCLIP:$PYTHONPATH
+
+EXPORT_ROOT=/scratch-shared/psobecki/ASL_Citizen
+SPACE_ARGS="--space raw=$EXPORT_ROOT/logos_features_native"
+for name in signclip_scratch signclip_ft signclip_aug_ft pair_k3 pair_k5; do
+  d=$EXPORT_ROOT/signclip_features_$name
+  if [ -d "$d" ]; then SPACE_ARGS="$SPACE_ARGS --space $name=$d"
+  else echo "SKIP space $name ($d missing — rerun king_queen stage 1)"; fi
+done
+
+ASLLEX_CSV=$HOME/ASL_Citizen/asllex2_signdata.csv
+[ -f "$ASLLEX_CSV" ] || { echo "FATAL: $ASLLEX_CSV missing"; exit 1; }
+
+python iconicity_analysis.py \
+    $SPACE_ARGS \
+    --splits_dir $HOME/ASL_Citizen/splits \
+    --split train \
+    --asllex_csv "$ASLLEX_CSV" \
+    --rating_col "D.Iconicity(M)" \
+    --top_k 10 --n_perm 10000 --seed 0 \
+    --gender_probe \
+    --out_json runs/king_queen_analogy/iconicity_multi.json
+
+python iconicity_analysis.py \
+    $SPACE_ARGS \
+    --splits_dir $HOME/ASL_Citizen/splits \
+    --split train \
+    --asllex_csv "$ASLLEX_CSV" \
+    --rating_col "Iconicity(M)" \
+    --top_k 10 --n_perm 10000 --seed 0 \
+    --out_json runs/king_queen_analogy/iconicity_multi_hearing.json
+
+echo "Done."

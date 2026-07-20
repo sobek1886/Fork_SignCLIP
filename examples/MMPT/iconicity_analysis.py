@@ -130,7 +130,18 @@ def _num(x):
 def load_asllex(asllex_csv, rating_col=RATING_DEAF):
     """Code -> {rating, lexical_class, phono..., match covariates}."""
     table = {}
-    with open(asllex_csv, newline="", encoding="utf-8-sig") as f:
+    # The published signdata CSV is an Excel export and is NOT valid UTF-8
+    # (byte 0xf4 crashed the 2026-07-19 cluster run) NOR valid cp1252 (it also
+    # contains 0x8f, undefined there). latin-1 maps all 256 bytes, so it can
+    # never fail; only free-text columns are affected, never Code/ratings/
+    # phono fields.
+    raw = open(asllex_csv, "rb").read()
+    try:
+        text = raw.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        text = raw.decode("latin-1")
+    import io
+    with io.StringIO(text, newline="") as f:
         reader = csv.DictReader(f)
         if "Code" not in reader.fieldnames:
             raise ValueError(f"'Code' column missing in {asllex_csv}; "
