@@ -22,9 +22,14 @@ test counterpart, ONE fixed take each):
 Plus ngt_sv_eval_manifest.json: the shared evaluation manifest (real views of
 take 0 per sentence, FRONT first) used by eval_ngt_retrieval.py for every arm.
 
-View naming: the real files labeled "RIGHT" are the FRONT (centre) camera;
-the matching Unreal render camera is cam4 (--front_cam). This mapping is a
-recording artefact documented here only — thesis text just says "front view".
+View naming: the real front-camera files were originally mislabeled "RIGHT";
+on 2026-07-20 the videos AND their .npy features were renamed to "MIDDLE"
+(the true LEFT/RIGHT side cameras arrived as ngt_train_left/right .mkv, so
+the label had to be freed). The 2026-07 re-rendered Unreal sequences name
+their cameras by view (left/middle/right) instead of the purged cam2/3/4.
+Flux frames/features were generated BEFORE the rename and keep the legacy
+"RIGHT" label for the front view — hence the separate --flux_front_view_label.
+Thesis text just says "front view".
 
 Manifest entry format: sentence_id -> LIST of take dicts
     [{"real": [...], "unreal": [...]}, ...]
@@ -41,9 +46,10 @@ real views; sentences whose complete takes never carry them are dropped from
 the E2 manifest only, with a loud count (disclose in the thesis if non-zero).
 
 File naming expected (produced by extract_logos_features*.py):
-  real:    piotr_anims_M20260227_5998_260316_1_RIGHT_2026-03-16_12-55-25.npy
-  unreal:  ngt_aug_palmer_M20260227_5998_260316_0_cam4.npy
+  real:    piotr_anims_M20260227_5998_260316_1_MIDDLE_2026-03-16_12-55-25.npy
+  unreal:  ngt_aug_palmer_M20260227_5998_260316_0_middle.npy
   flux:    ngt_flux_M20260227_5998_260316_1_RIGHT_2026-03-16_12-55-25_signer_swap.npy
+           (legacy RIGHT = front; see --flux_front_view_label)
 
 Usage (on Snellius):
     python make_ngt_singleview_manifest.py \
@@ -78,8 +84,8 @@ from pathlib import Path
 _REAL_RE = re.compile(
     r'^(M\d{8}_\d+)_(\d{6})_(\d+)_(LEFT|MIDDLE|RIGHT)_'
     r'\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}$')
-# unreal: ngt_aug_palmer_M20260227_5998_260316_0_cam4.npy
-_UNREAL_RE = re.compile(r'^(M\d{8}_\d+)_(\d{6})_(\d+)_cam(\d+)$')
+# unreal: ngt_aug_palmer_M20260227_5998_260316_0_middle.npy
+_UNREAL_RE = re.compile(r'^(M\d{8}_\d+)_(\d{6})_(\d+)_(left|middle|right)$')
 # flux:  ngt_flux_M20260227_5998_260316_1_RIGHT_2026-03-16_12-55-25_signer_swap.npy
 _FLUX_RE = re.compile(
     r'^ngt_flux_(M\d{8}_\d+)_(\d{6})_(\d+)_(LEFT|MIDDLE|RIGHT)_'
@@ -117,7 +123,7 @@ def index_takes(args):
             m = _UNREAL_RE.match(p.stem[len(prefix):])
             if not m:
                 continue
-            sent, sess, take, cam = m.group(1), m.group(2), int(m.group(3)), f'cam{m.group(4)}'
+            sent, sess, take, cam = m.group(1), m.group(2), int(m.group(3)), m.group(4)
             takes[sent][(sess, take)]['unreal'][(char, cam)] = str(p.resolve())
             n += 1
     print(f'Indexed {n} unreal render files from {args.ngt_aug_dir}')
@@ -129,7 +135,7 @@ def index_takes(args):
             continue
         sent, sess, take, view, variant = (m.group(1), m.group(2), int(m.group(3)),
                                            m.group(4), m.group(5))
-        if view != args.front_view_label or variant not in FLUX_VARIANTS:
+        if view != args.flux_front_view_label or variant not in FLUX_VARIANTS:
             continue
         takes[sent][(sess, take)]['flux'][variant] = str(p.resolve())
         n += 1
@@ -271,13 +277,16 @@ def main():
                         help='Bushuis test features (bushuis_M*.npy) — defines the '
                              'subset tier and lets us report test coverage')
     parser.add_argument('--real_prefix', default='piotr_anims_')
-    parser.add_argument('--front_view_label', default='RIGHT',
-                        help='label of the FRONT camera in real/flux filenames '
-                             '(the recordings labeled RIGHT are the front view)')
-    parser.add_argument('--front_cam', default='cam4',
+    parser.add_argument('--front_view_label', default='MIDDLE',
+                        help='label of the FRONT camera in real filenames '
+                             '(after the 2026-07-20 RIGHT→MIDDLE rename)')
+    parser.add_argument('--flux_front_view_label', default='RIGHT',
+                        help='label of the FRONT camera in flux filenames — '
+                             'flux frames predate the rename and keep RIGHT')
+    parser.add_argument('--front_cam', default='middle',
                         help='Unreal render camera matching the front view')
     parser.add_argument('--unreal_characters', nargs='+', default=['palmer', 'digits'])
-    parser.add_argument('--unreal_cams', nargs='+', default=['cam2', 'cam3', 'cam4'])
+    parser.add_argument('--unreal_cams', nargs='+', default=['left', 'middle', 'right'])
     parser.add_argument('--output_dir', required=True)
     parser.add_argument('--sessions', nargs='+', default=None,
                         help='real-signer-count mode: 6-digit session ids '
