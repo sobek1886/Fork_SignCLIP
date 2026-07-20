@@ -10,9 +10,27 @@
 # Stage 1 (GPU): export pooled_video features for the SignCLIP spaces that
 #   have trained checkpoints — skips any whose checkpoint is missing.
 # Stage 2 (CPU-heavy): run the analogy battery over every available space.
+# Stage 3 (CPU, new 2026-07-19): iconicity extension — ASL-LEX high- vs
+#   low-iconicity contrast with matched controls + the gender-offset vs
+#   location-direction probe (iconicity_analysis.py).
 #
-# PRINCE/PRINCESS availability in ASL Citizen is checked at runtime and the
-# pair is skipped with a warning if absent.
+# RERUN REQUIRED (2026-07-19): the WOMAN-variant glosses are spelled
+#   WOMAN1/WOMAN2 in the vocabulary; the previous run queried "WOMAN"/
+#   "WOMAN 2" and silently dropped both MAN pairs, so multi_space.json
+#   (2026-07-19) covers only KING/QUEEN + BOY/GIRL. This rerun adds
+#   MAN/WOMAN1 and MAN/WOMAN2 (PRINCESS confirmed absent; skip expected)
+#   and produces the iconicity numbers for the thesis todos in
+#   sec:results-analogy / sec:results-iconicity.
+#
+# One-time setup for stage 3 (login node has internet):
+#   wget -O $HOME/ASL_Citizen/asllex2_signdata.csv \
+#     "https://raw.githack.com/ASL-LEX/asl-lex/master/data-analysis/scripts/data/signdata_updated11-18.csv"
+#   (ASL-LEX 2.0 signdata; URL + schema verified 2026-07-19. Canonical
+#    source https://osf.io/zpha4/ — if the mirror moves, download
+#    signdata from OSF instead; the loader only needs the columns
+#    Code, D.Iconicity(M), Iconicity(M), LexicalClass, SignFrequency(M),
+#    "Neighborhood Density 2.0", MajorLocation/MinorLocation/Handshape/
+#    Movement/SignType .2.0, EntryID. CC BY-NC 4.0; cite Sehyr et al. 2021.)
 
 #SBATCH --partition=gpu_a100
 #SBATCH --gpus=1
@@ -60,5 +78,30 @@ python king_queen_analogy.py \
     --split train \
     --out_json runs/king_queen_analogy/multi_space.json \
     --out_png  runs/king_queen_analogy/analogy.png
+
+# ── Stage 3: iconicity extension (ASL-LEX contrast + gender-location probe) ──
+ASLLEX_CSV=$HOME/ASL_Citizen/asllex2_signdata.csv
+if [ -f "$ASLLEX_CSV" ]; then
+  python iconicity_analysis.py \
+      $SPACE_ARGS \
+      --splits_dir $HOME/ASL_Citizen/splits \
+      --split train \
+      --asllex_csv "$ASLLEX_CSV" \
+      --rating_col "D.Iconicity(M)" \
+      --top_k 10 --n_perm 10000 --seed 0 \
+      --gender_probe \
+      --out_json runs/king_queen_analogy/iconicity_multi.json
+  # robustness pass with hearing non-signer ratings
+  python iconicity_analysis.py \
+      $SPACE_ARGS \
+      --splits_dir $HOME/ASL_Citizen/splits \
+      --split train \
+      --asllex_csv "$ASLLEX_CSV" \
+      --rating_col "Iconicity(M)" \
+      --top_k 10 --n_perm 10000 --seed 0 \
+      --out_json runs/king_queen_analogy/iconicity_multi_hearing.json
+else
+  echo "SKIP stage 3: $ASLLEX_CSV missing — run the wget in the header first."
+fi
 
 echo "Done."

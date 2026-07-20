@@ -17,10 +17,19 @@ EXTENDED (2026-07-11) to separate two hypotheses the original check confounds:
 
 Design:
   1. A battery of gendered pairs that VARY in visual similarity — KING/QUEEN
-     (and PRINCE/PRINCESS when available) as visually-similar pairs, MAN/WOMAN
-     and BOY/GIRL as visually-dissimilar pairs. Availability of each gloss is
-     checked against the split at runtime; missing glosses are skipped with a
-     warning (PRINCE/PRINCESS presence in ASL Citizen is unconfirmed).
+     (and PRINCE/PRINCESS when available) as visually-similar pairs,
+     MAN/WOMAN1, MAN/WOMAN2 and BOY/GIRL as visually-dissimilar pairs.
+     Availability of each gloss is checked against the split at runtime;
+     missing glosses are skipped with a warning.
+     FIX 2026-07-19: the vocabulary spells the WOMAN variants WOMAN1/WOMAN2;
+     earlier revisions queried "WOMAN"/"WOMAN 2" and silently dropped both
+     MAN pairs (the 2026-07-19 multi_space.json therefore covers only
+     KING/QUEEN and BOY/GIRL). PRINCESS is confirmed absent from the
+     2,731-gloss vocabulary. Rerun needed for the enlarged battery.
+
+ICONICITY EXTENSION (2026-07-19): see iconicity_analysis.py for the
+ASL-LEX-based high- vs low-iconicity contrast and the gender-offset vs
+location-direction probe; it reuses this script's --space convention.
   2. Cross-pair offset transfer: for source pair (mA, fA) and target pair
      (mB, fB), pred = c(mB) + (c(fA) - c(mA)). Report, per space:
        - rank(fB | pred) among all gloss centers      (the analogy test)
@@ -80,16 +89,25 @@ from eval_asl_citizen_retrieval import load_metadata, load_features, DEFAULT_SPL
 
 # Gendered-pair battery: (male gloss, female gloss, visual-similarity prior).
 # The prior is a human label used only for reading the results, not computed.
+#
+# Gloss names verified against the ASL Citizen train split (2026-07-19):
+# the vocabulary uses WOMAN1 / WOMAN2 (two genuine lexical variants of
+# WOMAN with different movement, per ASL Citizen's variant-numbering
+# convention, cf. NIGHT1/NIGHT2, DOG1/DOG2), not "WOMAN" / "WOMAN 2" as
+# earlier revisions assumed - which is why the MAN/WOMAN pairs silently
+# dropped out of the 2026-07-19 run. PRINCE exists but PRINCESS is
+# genuinely absent from the 2,731-gloss vocabulary, so that pair stays
+# listed only to make the skip explicit in the logs.
 DEFAULT_PAIRS = [
     ("KING", "QUEEN", "visually-similar"),
-    ("PRINCE", "PRINCESS", "visually-similar"),   # availability unconfirmed
-    ("MAN", "WOMAN", "visually-dissimilar"),
-    ("MAN", "WOMAN 2", "visually-dissimilar"),    # ASL Citizen variant gloss
+    ("PRINCE", "PRINCESS", "visually-similar"),   # PRINCESS absent: skipped
+    ("MAN", "WOMAN1", "visually-dissimilar"),
+    ("MAN", "WOMAN2", "visually-dissimilar"),     # second WOMAN variant
     ("BOY", "GIRL", "visually-dissimilar"),
 ]
 
-# Original-script gloss aliases, so "--tsne_glosses WOMAN1" still works.
-ALIASES = {"WOMAN1": "WOMAN", "WOMAN2": "WOMAN 2"}
+# Aliases so earlier spellings keep working in --pairs / --tsne_glosses.
+ALIASES = {"WOMAN": "WOMAN1", "WOMAN 2": "WOMAN2"}
 
 
 def parse_space(s):
@@ -178,7 +196,7 @@ def analyze_space(space_name, feats, glosses, pairs, out):
           f"{np.mean(cons):.4f}")
 
     # 4. the original KING - MAN + WOMAN check, kept verbatim for continuity
-    for woman_gloss in ("WOMAN", "WOMAN 2"):
+    for woman_gloss in ("WOMAN1", "WOMAN2"):
         if all(g in g2i for g in ("KING", "MAN", woman_gloss, "QUEEN")):
             pred = (centers[g2i["KING"]] - centers[g2i["MAN"]]
                     + centers[g2i[woman_gloss]])
