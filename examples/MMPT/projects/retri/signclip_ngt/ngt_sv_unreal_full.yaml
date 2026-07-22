@@ -24,7 +24,7 @@ fairseq:
   dataset:
     num_workers: 4
     # 7*27=189 encoder passes per step ≈ constant budget across arms
-    batch_size: 27
+    batch_size: 64
     disable_validation: true
   optimization:
     lr: [5.0e-05]
@@ -32,8 +32,8 @@ fairseq:
     optimizer: adam
     adam_betas: (0.9, 0.98)
     lr_scheduler: polynomial_decay
-    total_num_update: 700
-    warmup_updates: 140
+    total_num_update: 600
+    warmup_updates: 60
     weight_decay: 0.01
     ddp_backend: no_c10d
     max_epoch: 50

@@ -1,0 +1,12 @@
+#!/bin/bash
+#SBATCH --partition=genoa
+#SBATCH --job-name=dump_kq_logos
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=16
+#SBATCH --time=00:20:00
+#SBATCH --output=jobs/output/slurm_%x_%A.txt
+module purge; module load 2025
+cd $HOME/Fork_SignCLIP/examples/MMPT
+source .venv/bin/activate
+export PYTHONPATH=$HOME/Fork_SignCLIP:$PYTHONPATH
+python dump_kq_logos.py

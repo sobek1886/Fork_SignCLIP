@@ -173,16 +173,27 @@ class SupConLoss(Loss):
 
 
 class VidNCELoss(Loss):
-    """Video-only InfoNCE. Treats each item in the batch as its own class.
-    Pushes sign embeddings apart without requiring text labels or positive pairs.
-    Used as the appearance-invariance baseline (single-view Bushuis training).
+    """Video-only InfoNCE (instance discrimination). Treats each item in the
+    batch as its own class and pushes sign embeddings apart; no text labels or
+    positive pairs required. Used as the K=1 real-only baseline.
+
+    Embeddings are L2-normalised and scaled by a temperature before the dot
+    product (as in SupConLoss). Without this, forward_video returns raw,
+    un-normalised vectors, so the diagonal ``logits[i][i] = ||v_i||^2`` trivially
+    dominates every off-diagonal → the cross-entropy is ~0 and the loss produces
+    no gradient (the arm never trains).
     """
 
     def __init__(self, config=None):
         self.loss = nn.CrossEntropyLoss()
+        # VidNCE yamls do not set supcon_temperature; OmegaConf returns None for
+        # a missing key (not the getattr default), so guard against None.
+        temp = getattr(config, "supcon_temperature", None) if config is not None else None
+        self.temperature = 0.07 if temp is None else temp
 
     def __call__(self, pooled_video, **kwargs):
-        logits = pooled_video @ pooled_video.t()   # (B, B)
+        feats = F.normalize(pooled_video, dim=-1)          # unit-norm rows
+        logits = feats @ feats.t() / self.temperature      # (B, B) cosine / tau
         targets = torch.arange(
             logits.size(0), dtype=torch.long, device=logits.device
         )
