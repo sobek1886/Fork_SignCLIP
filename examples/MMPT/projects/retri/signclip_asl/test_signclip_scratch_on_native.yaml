@@ -1,0 +1,35 @@
+dataset:
+  max_video_len: 32
+  max_len: 64
+  split: test
+  train_for_test: false
+  meta_processor: SignCLIPVideoCSVMetaProcessor
+  video_processor: RWTHFSVideoProcessor
+  text_processor: TextProcessor
+  bert_name: bert-base-cased
+  splits_dir: /home/psobecki/ASL_Citizen/splits
+  vfeat_dir: /scratch-shared/psobecki/ASL_Citizen/logos_features_native
+  dataset_name: asl_citizen
+  vfeat_custom: 1
+  aligner: DSAligner
+  sp_universal_tagging: true
+  test_separately: false
+task_type: local_predict
+fairseq:
+  dataset:
+    batch_size: 512
+    num_workers: 4
+  common_eval:
+    path: runs/retri_asl/signclip_scratch_on_native/checkpoint_last.pt
+model:
+  model_cls: MMFusionSeparate
+  mm_encoder_cls: null
+  video_encoder_cls: MMBertForEncoder
+  text_encoder_cls: BertModel
+  num_hidden_video_layers: 12
+  vfeat_dim: 768
+eval:
+  save_path: runs/retri_asl/signclip_scratch_on_native/eval
+metric: RWTHFSMetric
+predictor: RetrievalPredictor
+mlflow_experiment: signclip-cnn
