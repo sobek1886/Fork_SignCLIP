@@ -1,0 +1,59 @@
+# Real-signer-count ablation R1 (sessions 251126; 200 sentences x 1 take,
+# fixed-data): same recipe as the parent arm, only the manifest differs.
+# Flux-vs-Unreal comparison — E5: the parametric route at full strength.
+# FRONT + 2 Unreal identities x 3 cameras (K=7), SupCon. Everything mocap +
+# rendering can deliver: novel identities AND novel viewpoints.
+# 7*27=189 encoder passes per step ≈ constant budget across arms.
+#
+# Prerequisite: make_ngt_singleview_manifest.py.
+dataset:
+  max_video_len: 32
+  max_len: 64
+  meta_processor: NGTPairMetaProcessor
+  video_processor: NGTPairVideoProcessor
+  text_processor: TextProcessor
+  bert_name: bert-base-cased
+  pair_manifest: /home/psobecki/ngt_sv_mv_unreal_full_R1_manifest.json
+  load_real: true
+  load_unreal: true
+  aligner: NGTPairAligner
+  vfeat_dim: 768
+fairseq:
+  common:
+    fp16: true
+    tensorboard_logdir: run
+    log_interval: 20
+  dataset:
+    num_workers: 4
+    # 7*27=189 encoder passes per step ≈ constant budget across arms
+    batch_size: 64
+    disable_validation: true
+  optimization:
+    lr: [5.0e-05]
+    clip_norm: 2.0
+    optimizer: adam
+    adam_betas: (0.9, 0.98)
+    lr_scheduler: polynomial_decay
+    total_num_update: 150
+    warmup_updates: 15
+    weight_decay: 0.01
+    ddp_backend: no_c10d
+    max_epoch: 50
+  checkpoint:
+    no_epoch_checkpoints: true
+    save_dir: /scratch-shared/psobecki/runs/retri_ngt/ngt_mv_unreal_full_R1
+task_type: sweep_small
+task: NGTPairTask
+mlflow_experiment: signclip-ngt
+model:
+  model_cls: MMFusionSeparate
+  mm_encoder_cls: null
+  video_encoder_cls: MMBertForEncoder
+  text_encoder_cls: BertModel
+  num_hidden_video_layers: 12
+  vfeat_dim: 768
+loss:
+  loss_cls: SupConLoss
+  supcon_temperature: 0.07
+eval:
+  save_path: /scratch-shared/psobecki/runs/retri_ngt/ngt_mv_unreal_full_R1

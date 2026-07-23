@@ -174,6 +174,11 @@ def build_take_dict(slot, arm, args):
         return {'real': [front], 'unreal': [flux[v] for v in FLUX_IDENTITY]}
     if arm == 'unreal_full':
         return {'real': [front], 'unreal': unreal_full}
+    if arm == 'mv_unreal_full':
+        # real multiview (front + real side views) PLUS the full Unreal set:
+        # 3 real camera views + 2 avatars x 3 cams = K=9.
+        others = [slot['others'][v] for v in sorted(slot['others'])]
+        return {'real': [front] + others, 'unreal': unreal_full}
     if arm == 'flux_full':
         return {'real': [front], 'unreal': [flux[v] for v in FLUX_NO_GLASSES]}
     if arm == 'flux_glasses':
@@ -194,14 +199,20 @@ def write_session_subset(sentences, sentence_keys, bushuis_ids, args):
     """--sessions mode: one fixed-data signer-count condition (docstring top)."""
     sess_sel = list(dict.fromkeys(args.sessions))
     budget, suffix = args.sentence_budget, args.suffix
+    mv = args.multiview
 
-    # Assign each sentence to the first selected session holding a complete
-    # take, and pin its single take = first complete take in that session.
+    # Multiview mode pairs real-multiview (K=3) with mv_unreal_full (K=9), so the
+    # pinned take must additionally carry the real side views (>=2 'others').
+    def take_ok(sent, i):
+        return (not mv) or len(sentences[sent][i]['others']) >= 2
+
+    # Assign each sentence to the first selected session holding a usable
+    # take, and pin its single take = first usable take in that session.
     eligible = {s: [] for s in sess_sel}
     chosen = {}  # sent -> (session, take_key_index_into_sentence_lists)
     for sent in sorted(sentences):
         for i, (sess, take) in enumerate(sentence_keys[sent]):
-            if sess in sess_sel:
+            if sess in sess_sel and take_ok(sent, i):
                 eligible[sess].append(sent)
                 chosen[sent] = (sess, i, take)
                 break
@@ -222,13 +233,18 @@ def write_session_subset(sentences, sentence_keys, bushuis_ids, args):
     selected = sorted(selected)
     assert len(selected) == budget
 
+    # Single-view: real (K=1) + unreal_full (K=7).  Multiview: real_multiview
+    # (K=3) + mv_unreal_full (K=9).  Manifest filename stem per arm.
+    arms = ['real_multiview', 'mv_unreal_full'] if mv else ['real', 'unreal_full']
+    stem = {'real': 'real', 'unreal_full': 'unreal_full',
+            'real_multiview': 'mv_real', 'mv_unreal_full': 'mv_unreal_full'}
     manifests = {}
-    for arm in ['real', 'unreal_full']:
+    for arm in arms:
         manifests[arm] = {
             sent: [build_take_dict(sentences[sent][chosen[sent][1]], arm, args)]
             for sent in selected}
         out = os.path.join(args.output_dir,
-                           f'ngt_sv_{arm}_{suffix}_manifest.json')
+                           f'ngt_sv_{stem[arm]}_{suffix}_manifest.json')
         with open(out, 'w') as f:
             json.dump(manifests[arm], f, indent=2)
         ks = {len(t['real']) + len(t['unreal'])
@@ -237,8 +253,8 @@ def write_session_subset(sentences, sentence_keys, bushuis_ids, args):
 
     # Paired-arms gate: identical real slots (same sentence, same take).
     for sent in selected:
-        assert (manifests['real'][sent][0]['real']
-                == manifests['unreal_full'][sent][0]['real']), sent
+        assert (manifests[arms[0]][sent][0]['real']
+                == manifests[arms[1]][sent][0]['real']), sent
 
     per_session = {}
     for s in sess_sel:
@@ -254,7 +270,8 @@ def write_session_subset(sentences, sentence_keys, bushuis_ids, args):
         'total_bushuis_matched': len(set(selected) & bushuis_ids),
         'sentences': {sent: {'session': chosen[sent][0],
                              'take': chosen[sent][2]} for sent in selected}}
-    out = os.path.join(args.output_dir, f'ngt_sv_{suffix}_coverage.json')
+    cov_stem = f'ngt_sv_mv_{suffix}_coverage.json' if mv else f'ngt_sv_{suffix}_coverage.json'
+    out = os.path.join(args.output_dir, cov_stem)
     with open(out, 'w') as f:
         json.dump(coverage, f, indent=2)
     print(f'  Coverage sidecar → {out}')
@@ -300,6 +317,10 @@ def main():
                              'sentence sample')
     parser.add_argument('--suffix', default=None,
                         help='(--sessions mode) manifest name suffix, e.g. R2')
+    parser.add_argument('--multiview', action='store_true',
+                        help='(--sessions mode) emit the real-multiview (K=3) and '
+                             'mv_unreal_full (K=9) arm pair instead of real (K=1) / '
+                             'unreal_full (K=7); pins side-view-complete takes')
     args = parser.parse_args()
 
     if args.sessions and not args.suffix:

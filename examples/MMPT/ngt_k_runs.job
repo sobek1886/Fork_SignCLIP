@@ -1,0 +1,48 @@
+#!/bin/bash
+#SBATCH --partition=gpu_a100
+#SBATCH --gpus=1
+#SBATCH --job-name=ngt_k
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=16
+#SBATCH --time=03:00:00
+#SBATCH --output=jobs/output/slurm_%x_%A.txt
+#
+# 3-seed launcher for one NGT single-view/multiview arm (reconstructed).
+# Usage: sbatch --job-name=$EXP --export=ALL,EXPERIMENT=$EXP ngt_k_runs.job
+# Trains seeds 41,42,43 into ${EXP}_run{1,2,3}, evals each into eval_results.json.
+module purge
+module load 2025
+cd $HOME/Fork_SignCLIP/examples/MMPT
+source .venv/bin/activate
+export PYTHONPATH=$HOME/Fork_SignCLIP:$PYTHONPATH
+export PATH="$HOME/Fork_SignCLIP/examples/MMPT/.venv/bin:$PATH"
+
+EXP=${EXPERIMENT:?set EXPERIMENT=ngt_mv_real_R1 etc}
+BASE=projects/retri/signclip_ngt/${EXP}.yaml
+RUNROOT=/scratch-shared/psobecki/runs/retri_ngt
+EVAL_MANIFEST=/home/psobecki/ngt_sv_eval_manifest.json
+BUSHUIS=/scratch-shared/psobecki/Bushuis/logos_features_15fps
+
+for i in 1 2 3; do
+  SEED=$((40+i))
+  RUNDIR=${RUNROOT}/${EXP}_run${i}
+  TMP=projects/retri/signclip_ngt/.${EXP}_run${i}.yaml
+  python - "$BASE" "$TMP" "$RUNDIR" "$SEED" <<'PY'
+import sys, yaml
+base, tmp, rundir, seed = sys.argv[1], sys.argv[2], sys.argv[3], int(sys.argv[4])
+c = yaml.safe_load(open(base))
+c.setdefault("fairseq", {}).setdefault("common", {})["seed"] = seed
+c["fairseq"]["common"]["tensorboard_logdir"] = rundir + "/run_0"
+c["fairseq"].setdefault("checkpoint", {})["save_dir"] = rundir
+c.setdefault("eval", {})["save_path"] = rundir
+yaml.safe_dump(c, open(tmp, "w"))
+PY
+  echo "=== $EXP seed $SEED -> $RUNDIR ==="
+  srun python locallaunch.py "$TMP" --jobtype local_single
+  python eval_ngt_retrieval.py --config "$TMP" \
+      --checkpoint "${RUNDIR}/checkpoint_last.pt" \
+      --manifest "$EVAL_MANIFEST" --bushuis_dir "$BUSHUIS" \
+      --output_json "${RUNDIR}/eval_results.json"
+  rm -f "$TMP"
+done
+echo "DONE_${EXP}"

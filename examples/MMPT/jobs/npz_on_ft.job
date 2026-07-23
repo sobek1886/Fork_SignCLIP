@@ -1,0 +1,44 @@
+#!/bin/bash
+#SBATCH --partition=gpu_a100
+#SBATCH --gpus=1
+#SBATCH --job-name=npz_on_ft
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=16
+#SBATCH --time=02:30:00
+#SBATCH --output=jobs/output/slurm_%x_%A.txt
+module purge
+module load 2025
+cd $HOME/Fork_SignCLIP/examples/MMPT
+source .venv/bin/activate
+export PYTHONPATH=$HOME/Fork_SignCLIP:$PYTHONPATH
+export PATH="$HOME/Fork_SignCLIP/examples/MMPT/.venv/bin:$PATH"
+R=/scratch-shared/psobecki/ASL_Citizen
+
+# 1) Export pooled SignCLIP video features for the 5 newly trained heads.
+for name in scratch_on_native augft_on_native augft_on_ce augft_on_aug augft_on_sdda; do
+  # map config name -> feature dir name (drop the leading "scratch_"/keep augft as-is)
+  case $name in
+    scratch_on_native) fd=sc_on_native ;;
+    *)                 fd=$name ;;
+  esac
+  python export_signclip_features.py \
+    --config projects/retri/signclip_asl/test_signclip_${name}.yaml \
+    --output_dir $R/signclip_features_${fd} --splits train
+done
+
+# 2) Dump king-queen / form-neighbour / iconicity npz for those spaces.
+python dump_kq_spaces.py \
+  --space sc_on_native=$R/signclip_features_sc_on_native \
+  --space augft_on_native=$R/signclip_features_augft_on_native \
+  --space augft_on_ce=$R/signclip_features_augft_on_ce \
+  --space augft_on_aug=$R/signclip_features_augft_on_aug \
+  --space augft_on_sdda=$R/signclip_features_augft_on_sdda
+
+# 3) Form-dose plots for the same spaces (optional companion of the npz).
+python form_dose.py \
+  --space sc_on_native=$R/signclip_features_sc_on_native \
+  --space augft_on_native=$R/signclip_features_augft_on_native \
+  --space augft_on_ce=$R/signclip_features_augft_on_ce \
+  --space augft_on_aug=$R/signclip_features_augft_on_aug \
+  --space augft_on_sdda=$R/signclip_features_augft_on_sdda
+echo DONE_NPZ_ON_FT
