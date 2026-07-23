@@ -65,7 +65,7 @@ def table(data, sample_line, label):
         " = mean $\\pm$ sd over the five grouped cross-validation folds;"
         " gloss@1, flip and $E_{\\text{signer}}$ (medians) as defined in"
         " \\S\\ref{sec:results-aug-geometry}. The pooled row is the"
-        " all-edit-types AUC quoted in Table~\\ref{tab:aug_geometry_spaces}.}}",
+        " all-edit-types AUC quoted in Table~\\ref{tab:aug_geometry_spaces}.}",
         f"\\label{{{label}}}", "\\end{table}",
     ]
     return "\n".join(lines)
