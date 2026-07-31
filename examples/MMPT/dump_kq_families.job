@@ -1,0 +1,26 @@
+#!/bin/bash
+#SBATCH --partition=genoa
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=32
+#SBATCH --time=00:45:00
+#SBATCH --job-name=kq_families
+#SBATCH --output=/home/psobecki/Fork_SignCLIP/examples/MMPT/kq_families_%j.log
+
+module purge
+module load 2025
+cd ~/Fork_SignCLIP/examples/MMPT
+source .venv/bin/activate
+
+mkdir -p /scratch-shared/psobecki/kq_families
+python3 dump_kq_spaces_families.py \
+  --space raw=/scratch-shared/psobecki/ASL_Citizen/logos_features_native \
+  --space ce=/scratch-shared/psobecki/ASL_Citizen/logos_features_run2 \
+  --space aug=/scratch-shared/psobecki/ASL_Citizen/logos_features_run3 \
+  --space sc_on_native=/scratch-shared/psobecki/ASL_Citizen/signclip_features_sc_on_native \
+  --space augft_on_native=/scratch-shared/psobecki/ASL_Citizen/signclip_features_augft_on_native \
+  --space augft_on_ce=/scratch-shared/psobecki/ASL_Citizen/signclip_features_augft_on_ce \
+  --space augft_on_aug=/scratch-shared/psobecki/ASL_Citizen/signclip_features_augft_on_aug \
+  --space augft_on_sdda=/scratch-shared/psobecki/ASL_Citizen/signclip_features_augft_on_sdda \
+  --space signclip_pose=/scratch-shared/psobecki/ASL_Citizen/signclip_features_signclip_pose \
+  --out /scratch-shared/psobecki/kq_families
+echo DONE_KQ_FAMILIES

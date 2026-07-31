@@ -70,6 +70,28 @@ A coverage sidecar records the Bushuis-matched count per session (reported as a
 covariate — sessions are near sentence-disjoint, so eval coverage cannot be
 equalised across signer counts).
     ... --sessions 251126 260129 --sentence_budget 200 --budget_seed 0 --suffix R2
+
+Covered-only equalized mode (--covered_equal): the 2026-07 replacement for the
+--sessions design above. Training sentences are restricted to the COVERED pool
+(every training sentence has a counterpart in the frozen front-view eval set
+= set(eval manifest) & set(bushuis features)), so eval coverage no longer
+drifts with signer count. One run emits every condition S=1..len(--sessions):
+condition S uses the first S sessions, draws C=--covered_per_condition videos
+split evenly over them (largest remainder, CLI order: C=100 → 100 / 50+50 /
+34+33+33 / 25*4), ONE take per sentence, and the C sentences are UNIQUE within
+the condition. Sessions' covered pools overlap slightly, so a condition fills
+its quotas scarcest-session-first, skipping sentences already taken by another
+session of the SAME condition. Each session's covered pool is shuffled once
+into a fixed priority order (seeded by --budget_seed and the session id, so it
+does not depend on which condition is being built); conditions take prefixes of
+that order, which makes the draws nested/overlap-maximizing across S and keeps
+the union of all conditions' seen sentences — and hence the common-unseen eval
+set (eval set minus that union) — small and identical for every condition.
+Emits the same per-arm manifests + coverage sidecars as --sessions mode, plus a
+design JSON with the cross-condition gate report.
+    ... --covered_equal --sessions 251126 251217 260129 260316 \
+        --covered_per_condition 100 --budget_seed 0 --suffix eq \
+        --eval_manifest /home/psobecki/ngt_sv_eval_manifest.json
 """
 
 import argparse
@@ -235,8 +257,13 @@ def write_session_subset(sentences, sentence_keys, bushuis_ids, args):
 
     # Single-view: real (K=1) + unreal_full (K=7).  Multiview: real_multiview
     # (K=3) + mv_unreal_full (K=9).  Manifest filename stem per arm.
-    arms = ['real_multiview', 'mv_unreal_full'] if mv else ['real', 'unreal_full']
-    stem = {'real': 'real', 'unreal_full': 'unreal_full',
+    if args.e3_arm:
+        arms = ['unreal']
+    elif mv:
+        arms = ['real_multiview', 'mv_unreal_full']
+    else:
+        arms = ['real', 'unreal_full']
+    stem = {'real': 'real', 'unreal_full': 'unreal_full', 'unreal': 'unreal',
             'real_multiview': 'mv_real', 'mv_unreal_full': 'mv_unreal_full'}
     manifests = {}
     for arm in arms:
@@ -252,9 +279,10 @@ def write_session_subset(sentences, sentence_keys, bushuis_ids, args):
         print(f'  Wrote {len(manifests[arm]):4d} sentences (K={sorted(ks)}) → {out}')
 
     # Paired-arms gate: identical real slots (same sentence, same take).
-    for sent in selected:
-        assert (manifests[arms[0]][sent][0]['real']
-                == manifests[arms[1]][sent][0]['real']), sent
+    if len(arms) > 1:
+        for sent in selected:
+            assert (manifests[arms[0]][sent][0]['real']
+                    == manifests[arms[1]][sent][0]['real']), sent
 
     per_session = {}
     for s in sess_sel:
@@ -270,7 +298,8 @@ def write_session_subset(sentences, sentence_keys, bushuis_ids, args):
         'total_bushuis_matched': len(set(selected) & bushuis_ids),
         'sentences': {sent: {'session': chosen[sent][0],
                              'take': chosen[sent][2]} for sent in selected}}
-    cov_stem = f'ngt_sv_mv_{suffix}_coverage.json' if mv else f'ngt_sv_{suffix}_coverage.json'
+    cov_stem = (f'ngt_sv_e3_{suffix}_coverage.json' if args.e3_arm else
+                f'ngt_sv_mv_{suffix}_coverage.json' if mv else f'ngt_sv_{suffix}_coverage.json')
     out = os.path.join(args.output_dir, cov_stem)
     with open(out, 'w') as f:
         json.dump(coverage, f, indent=2)
@@ -279,6 +308,212 @@ def write_session_subset(sentences, sentence_keys, bushuis_ids, args):
           f'{budget} sentences = {budget} front videos '
           f'(per-session {[quotas[s] for s in sess_sel]}), '
           f'Bushuis-matched {coverage["total_bushuis_matched"]}.')
+
+
+_ARM_STEM = {'real': 'real', 'unreal_full': 'unreal_full', 'unreal': 'unreal',
+             'real_multiview': 'mv_real', 'mv_unreal_full': 'mv_unreal_full'}
+
+
+def covered_pools(sentences, sentence_keys, eval_ids, sess_list, mv):
+    """→ pools[session][sentence] = (take_list_index, take_idx).
+
+    A sentence is in a session's covered pool when it is in the frozen eval set
+    (eval_ids) AND that session holds a usable take; the pinned take is the
+    first usable one in that session (multiview additionally needs the real
+    side views, i.e. >= 2 'others')."""
+    pools = {s: {} for s in sess_list}
+    for sent in sorted(eval_ids):
+        if sent not in sentence_keys:
+            continue
+        for i, (sess, take) in enumerate(sentence_keys[sent]):
+            if sess not in pools or sent in pools[sess]:
+                continue
+            if mv and len(sentences[sent][i]['others']) < 2:
+                continue
+            pools[sess][sent] = (i, take)
+    return pools
+
+
+def write_covered_equal(sentences, sentence_keys, bushuis_ids, eval_ids, args):
+    """--covered_equal mode: all S conditions, covered-only, C videos each."""
+    sess_all = list(dict.fromkeys(args.sessions))
+    mv, C = args.multiview, args.covered_per_condition
+    arms = (['real_multiview', 'mv_unreal_full'] if mv else
+            ['real', 'unreal_full', 'unreal'])
+
+    pools = covered_pools(sentences, sentence_keys, eval_ids, sess_all, mv)
+    sv_pools = pools if not mv else covered_pools(
+        sentences, sentence_keys, eval_ids, sess_all, False)
+    print(f'\nCovered pools ({"mv" if mv else "sv"}), frozen eval set '
+          f'{len(eval_ids)} sentences:')
+    for s in sess_all:
+        print(f'  {s}: {len(pools[s]):4d} covered'
+              + ('' if not mv else f'   (sv pool {len(sv_pools[s])})'))
+    if mv:
+        broke = {s: sorted(set(sv_pools[s]) - set(pools[s])) for s in sess_all}
+        if any(broke.values()):
+            print('  MV GATE FAILED — sessions/sentences without a '
+                  'side-view-complete covered take:')
+            for s in sess_all:
+                if broke[s]:
+                    print(f'    {s}: {len(broke[s])} e.g. {broke[s][:8]}')
+            raise SystemExit('mv covered pools != sv covered pools; '
+                             'multiview family must stay out of this design.')
+        print('  MV GATE PASSED: mv covered pools == sv covered pools.')
+
+    # One fixed priority order per session, independent of the condition.
+    prio = {}
+    for s in sess_all:
+        lst = sorted(pools[s])
+        random.Random(f'{args.budget_seed}:{s}').shuffle(lst)
+        prio[s] = lst
+
+    conditions = {}          # S -> {'sessions', 'quotas', 'per_session', 'chosen'}
+    for S in range(1, len(sess_all) + 1):
+        sess_sel = sess_all[:S]
+        base, rem = divmod(C, S)
+        quotas = {s: base + (1 if j < rem else 0) for j, s in enumerate(sess_sel)}
+        taken, chosen, per_session = set(), {}, {}
+        # Scarcest session first: it has the least room to dodge collisions.
+        for s in sorted(sess_sel, key=lambda x: (len(pools[x]), x)):
+            pick = []
+            for sent in prio[s]:
+                if len(pick) == quotas[s]:
+                    break
+                if sent in taken:
+                    continue
+                pick.append(sent)
+                taken.add(sent)
+                chosen[sent] = (s,) + pools[s][sent]
+            if len(pick) < quotas[s]:
+                raise SystemExit(
+                    f'S={S} session {s}: only {len(pick)} of quota {quotas[s]} '
+                    f'available after within-condition exclusions (pool '
+                    f'{len(pools[s])}) — lower --covered_per_condition.')
+            per_session[s] = sorted(pick)
+        assert len(taken) == C and len(chosen) == C
+        conditions[S] = {'sessions': sess_sel, 'quotas': quotas,
+                         'per_session': per_session, 'chosen': chosen,
+                         'selected': sorted(taken)}
+
+    # ---- per-condition manifests + coverage sidecars -----------------------
+    for S, cond in conditions.items():
+        suffix = f'{args.suffix}S{S}'
+        selected, chosen = cond['selected'], cond['chosen']
+        assert len(selected) == C, S
+        assert len(set(selected)) == C, S                 # unique sentences
+        assert set(selected) <= eval_ids, S               # covered-only
+        manifests = {}
+        for arm in arms:
+            manifests[arm] = {
+                sent: [build_take_dict(sentences[sent][chosen[sent][1]], arm, args)]
+                for sent in selected}
+            out = os.path.join(args.output_dir,
+                               f'ngt_sv_{_ARM_STEM[arm]}_{suffix}_manifest.json')
+            if os.path.exists(out) and not args.overwrite:
+                raise SystemExit(f'{out} exists — pass --overwrite to replace.')
+            with open(out, 'w') as f:
+                json.dump(manifests[arm], f, indent=2)
+            ks = {len(t['real']) + len(t['unreal'])
+                  for tl in manifests[arm].values() for t in tl}
+            print(f'  Wrote {len(manifests[arm]):4d} sentences (K={sorted(ks)}) '
+                  f'→ {out}')
+        # take identity: every arm anchors on the same real front video/take.
+        for sent in selected:
+            fronts = {manifests[a][sent][0]['real'][0] for a in arms}
+            assert len(fronts) == 1, (sent, fronts)
+
+        per_session = {
+            s: {'eligible': len(pools[s]), 'quota': cond['quotas'][s],
+                'selected': len(cond['per_session'][s]),
+                'bushuis_matched_selected': len(
+                    set(cond['per_session'][s]) & bushuis_ids),
+                'sentences': cond['per_session'][s]}
+            for s in cond['sessions']}
+        coverage = {
+            'suffix': suffix, 'sessions': cond['sessions'],
+            'sentence_budget': C, 'budget_seed': args.budget_seed,
+            'covered_only': True, 'design': 'covered_equal',
+            'per_session': per_session, 'total_selected': len(selected),
+            'total_bushuis_matched': len(set(selected) & bushuis_ids),
+            'sentences': {sent: {'session': chosen[sent][0],
+                                 'take': chosen[sent][2]} for sent in selected}}
+        cov_stem = (f'ngt_sv_mv_{suffix}_coverage.json' if mv else
+                    f'ngt_sv_{suffix}_coverage.json')
+        out = os.path.join(args.output_dir, cov_stem)
+        with open(out, 'w') as f:
+            json.dump(coverage, f, indent=2)
+        print(f'  Coverage sidecar → {out}')
+        print(f'Condition {suffix}: {S} signer(s) {cond["sessions"]}, {C} '
+              f'covered sentences = {C} front videos (per-session '
+              f'{[cond["quotas"][s] for s in cond["sessions"]]}).\n')
+
+    # ---- cross-condition gates --------------------------------------------
+    union = set().union(*(set(c['selected']) for c in conditions.values()))
+    common_unseen = sorted(eval_ids - union)
+    print(f'Union of all conditions\' seen sentences: {len(union)}')
+    print(f'Common-unseen eval set: {len(eval_ids)} - {len(union)} = '
+          f'{len(common_unseen)} (identical for every condition by '
+          f'construction).')
+
+    nesting = []
+    for s in sess_all:
+        got = {S: set(c['per_session'][s]) for S, c in conditions.items()
+               if s in c['per_session']}
+        for a, b in zip(sorted(got), sorted(got)[1:]):
+            extra = sorted(got[b] - got[a])
+            nesting.append({'session': s, 'S_small': a, 'S_large': b,
+                            'nested': not extra, 'n_extra': len(extra),
+                            'extra': extra})
+    bad = [n for n in nesting if not n['nested']]
+    print('Nesting across S per session: '
+          + ('OK (every larger-S draw is a subset of the smaller-S draw)'
+             if not bad else
+             f'{len(bad)} of {len(nesting)} pairs not strictly nested '
+             + str([(n["session"], n["S_small"], n["S_large"], n["n_extra"])
+                    for n in bad])))
+
+    old_cmp = None
+    if args.old_coverage:
+        old_union = set()
+        for f in sorted(args.old_coverage):
+            old_union |= set(json.load(open(f)).get('sentences', {}))
+        old_unseen = eval_ids - old_union
+        leak = sorted(union & old_unseen)
+        by_sess = {s: sorted(set(prio[s]) & set(leak)) for s in sess_all}
+        old_cmp = {'old_coverage_files': sorted(args.old_coverage),
+                   'old_common_unseen': len(old_unseen),
+                   'new_common_unseen_is_superset': not leak,
+                   'leaked_from_old_common_unseen': len(leak),
+                   'leaked_sentences': leak,
+                   'leaked_by_session': {s: len(v) for s, v in by_sess.items()}}
+        print(f'Old common-unseen set: {len(old_unseen)} sentences; new seen '
+              f'union covers {len(leak)} of them '
+              f'(superset gate {"PASSED" if not leak else "FAILED"}); '
+              f'by session {old_cmp["leaked_by_session"]}')
+
+    design = {
+        'design': 'covered_equal', 'multiview': mv, 'arms': arms,
+        'covered_per_condition': C, 'budget_seed': args.budget_seed,
+        'sessions': sess_all, 'eval_set_size': len(eval_ids),
+        'covered_pool_sizes': {s: len(pools[s]) for s in sess_all},
+        'sv_covered_pool_sizes': {s: len(sv_pools[s]) for s in sess_all},
+        'mv_gate_passed': True if mv else None,
+        'priority_order': prio,
+        'conditions': {f'{args.suffix}S{S}': {
+            'sessions': c['sessions'],
+            'quotas': {s: c['quotas'][s] for s in c['sessions']},
+            'per_session_sentences': c['per_session'],
+            'selected': c['selected']} for S, c in conditions.items()},
+        'seen_union': sorted(union), 'seen_union_size': len(union),
+        'common_unseen': common_unseen,
+        'common_unseen_size': len(common_unseen),
+        'nesting': nesting, 'old_design_comparison': old_cmp}
+    out = os.path.join(args.output_dir,
+                       f'ngt_sv_{"mv_" if mv else ""}{args.suffix}_design.json')
+    with open(out, 'w') as f:
+        json.dump(design, f, indent=2)
+    print(f'Design/gate report → {out}')
 
 
 def main():
@@ -317,11 +552,38 @@ def main():
                              'sentence sample')
     parser.add_argument('--suffix', default=None,
                         help='(--sessions mode) manifest name suffix, e.g. R2')
+    parser.add_argument('--e3_arm', action='store_true',
+                        help='(--sessions mode) emit only the E3-style arm '
+                             '(front + avatars at the front cam, K=3), '
+                             'take-matched to the non-mv selection')
     parser.add_argument('--multiview', action='store_true',
                         help='(--sessions mode) emit the real-multiview (K=3) and '
                              'mv_unreal_full (K=9) arm pair instead of real (K=1) / '
                              'unreal_full (K=7); pins side-view-complete takes')
+    parser.add_argument('--covered_equal', action='store_true',
+                        help='covered-only equalized design (see docstring): '
+                             'with --sessions s1..sN emit every condition '
+                             'S=1..N at once, training only on sentences that '
+                             'have a counterpart in the frozen eval set')
+    parser.add_argument('--covered_per_condition', type=int, default=100,
+                        help='(--covered_equal) videos per condition, split '
+                             'evenly across that condition\'s sessions')
+    parser.add_argument('--eval_manifest', default=None,
+                        help='(--covered_equal) frozen eval manifest; the '
+                             'covered set is its sentences intersected with '
+                             'the Bushuis features (defaults to all '
+                             'core-complete sentences & Bushuis)')
+    parser.add_argument('--old_coverage', nargs='*', default=None,
+                        help='(--covered_equal) old coverage sidecars; report '
+                             'whether the new common-unseen set is a superset '
+                             'of the old one')
+    parser.add_argument('--overwrite', action='store_true',
+                        help='(--covered_equal) allow replacing existing '
+                             'manifests (default: refuse, non-clobbering)')
     args = parser.parse_args()
+
+    if args.covered_equal and not (args.sessions and args.suffix):
+        raise SystemExit('--covered_equal requires --sessions and --suffix')
 
     if args.sessions and not args.suffix:
         raise SystemExit('--sessions mode requires --suffix (e.g. R2)')
@@ -354,6 +616,18 @@ def main():
     subset_ids = sorted(set(sentences) & bushuis_ids)
     print(f'Bushuis features found for {len(bushuis_ids)} sentences; '
           f'test-matched subset: {len(subset_ids)} sentences')
+
+    if args.covered_equal:
+        os.makedirs(args.output_dir, exist_ok=True)
+        if args.eval_manifest:
+            with open(args.eval_manifest) as f:
+                eval_ids = set(json.load(f)) & bushuis_ids
+        else:
+            eval_ids = set(subset_ids)
+        print(f'Frozen eval (covered) set: {len(eval_ids)} sentences')
+        write_covered_equal(sentences, sentence_keys, bushuis_ids,
+                            eval_ids, args)
+        return
 
     if args.sessions:
         os.makedirs(args.output_dir, exist_ok=True)
